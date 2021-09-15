@@ -22,6 +22,9 @@ module MakeSystem(O : Optimizer) =
     let n_vars (a : syst) =
       ISet.cardinal (vars a)
 
+    let to_string (a : syst) =
+      String.concat "; " (Array.to_list (Array.map Expression.to_string a))
+    
     let solve = O.solve
   end
 

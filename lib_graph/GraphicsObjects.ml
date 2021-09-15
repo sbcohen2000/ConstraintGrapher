@@ -2,11 +2,15 @@ class virtual obj (invalidate : unit -> unit) =
         object(self)
           val invalidate = invalidate
           val mutable position = (0., 0. : Geometry.Point.t)
+
+          method set_position (pos : Geometry.Point.t) =
+            position <- pos
           
           method render (cr : Cairo.context) =
             let px, py = Geometry.Rect.position (self#bounds ()) in
             Cairo.translate cr px py;
             self#draw cr;
+            Cairo.identity_matrix cr;
 
           method handle (event : EventParser.event) =
             match event with

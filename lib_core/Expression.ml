@@ -58,3 +58,10 @@ let vars (e : t) =
 
 let n_vars (e : t) =
   ISet.cardinal (vars e)
+
+let rec to_string (e : t) =
+  match e with
+  | X (sub, Undef) -> "x_" ^ Int.to_string sub ^ " (undef)"
+  | X (sub, Def f) -> "x_" ^ Int.to_string sub ^ " (" ^ Float.to_string f ^ ")"
+  | Fun (nm, es) -> nm ^ "(" ^ String.concat ", " (List.map to_string es) ^ ")"
+  | Const f -> Float.to_string f
