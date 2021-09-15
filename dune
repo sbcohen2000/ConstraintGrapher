@@ -1,4 +1,4 @@
-(executable
- (name main)
+(executables
+ (names main testAlgo)
  (libraries lablgtk3 graph core))
  
