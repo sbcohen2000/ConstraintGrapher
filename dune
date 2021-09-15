@@ -1,0 +1,4 @@
+(executable
+ (name main)
+ (libraries lablgtk3 graph core))
+ 
