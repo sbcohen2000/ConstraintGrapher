@@ -5,6 +5,8 @@ module type Optimizer = sig
   type syst = Expression.t Array.t
   type vect = float Array.t
 
+  (* call solve with a custom parameter *)
+  val vary_solution : syst -> vect -> int -> float -> vect
   val solve : syst -> vect -> vect
 end
 
@@ -24,7 +26,8 @@ module MakeSystem(O : Optimizer) =
 
     let to_string (a : syst) =
       String.concat "; " (Array.to_list (Array.map Expression.to_string a))
-    
+
+    let vary_solution = O.vary_solution
     let solve = O.solve
   end
 
@@ -146,6 +149,18 @@ module DirectOptimizer =
       then (Array.get their_values 0, x, alpha *. 0.5)
       else (Array.get their_values winner,
             Array.get test_points winner, alpha)
+
+    let vary_solution (a : syst) (x0 : vect) (dim : int) (alpha : float) =
+      let rec f = fun x -> 
+        let (obj, new_x, _) = update_star a x 0.05 in
+        let coord = Array.get new_x dim in
+        if coord > alpha
+        then Array.set new_x dim (coord -. 0.1)
+        else Array.set new_x dim (coord +. 0.1);
+        
+        if Float.abs(coord -. alpha) < 0.1 || obj > 0.1 then new_x
+        else f new_x
+      in f x0
     
     let solve (a : syst) (x0 : vect) =
       let rec f = fun x alpha ->
@@ -154,5 +169,5 @@ module DirectOptimizer =
         if obj < 0.01 then x
         else f new_x new_alpha
       in f x0 1000.
-    
+
   end
