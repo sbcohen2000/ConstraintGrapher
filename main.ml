@@ -13,13 +13,7 @@ let sys = Core.Constraint.to_system nodes;;
 let sys = Array.append sys [| Core.Expression.Const 0. |];;
 
 let init_guess = Array.make (Solver.n_vars sys) 0.;;
-let soln_0 = Solver.solve sys init_guess;;
-let random_guess = Array.map (fun v -> Random.float 1. +. v) init_guess;;
-let soln_1 = Solver.solve sys init_guess;;
-
-let diff = Array.map2 (fun a b -> Float.abs (a -. b) > 0.1) soln_0 soln_1;;
-let _, free_vars = Array.fold_left (fun (idx, list) elem -> if elem then (idx + 1, idx::list) else (idx + 1, list)) (0, []) diff;;
-print_endline (String.concat ", " (List.map Int.to_string free_vars))
+let soln = Solver.solve sys init_guess;;
 
 let pi2 = 8. *. atan 1.
 
@@ -57,7 +51,7 @@ let () =
   let graphic_objects =
     List.mapi (fun i _ ->
         let gnode = new GraphicsObjects.node invalidate in
-        gnode#set_position (Array.get soln_0 (2 * i), Array.get soln_0 (2 * i + 1));
+        gnode#set_position (Array.get soln (2 * i), Array.get soln (2 * i + 1));
         gnode) nodes in
   let canvas = Canvas.create graphic_objects in
   let ev_parser = EventParser.create (fun ev -> Canvas.handle canvas ev) in
