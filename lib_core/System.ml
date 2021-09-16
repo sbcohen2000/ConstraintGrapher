@@ -88,9 +88,71 @@ module GradientOptimizer =
     let solve (a : syst) (x0 : vect) =
       let rec f = fun x ->
         let x' = line_search a x in
-        print_endline (String.concat ", " (Array.to_list (Array.map Float.to_string x)));
+        (* print_endline (String.concat ", " (Array.to_list (Array.map Float.to_string x))); *)
         let obj = objective a x' in
         if obj < 0.01 then x
         else f x' in
       f x0
+  end
+
+module DirectOptimizer =
+  struct
+    type syst = Expression.t Array.t (* the system of equations *)
+    type vect = float Array.t        (* vector of vars          *)
+
+    (* give a vector with the value of the system at x *)
+    let eval (a : syst) (x : vect) =
+      Array.map (fun expr -> Expression.eval (Expression.subst expr x)) a
+
+    (* give a vector with the value of the objective function
+     * of the system at x.
+     * 
+     * The objective function is defined as |f_0(x)| + |f_1(x)| + ... + |f_n(x)| 
+     * where each f_i is equation i in the system 'a' *)
+    let objective (a : syst) (x : vect) =
+      let vals = Array.map (fun expr -> Expression.eval (Expression. subst expr x)) a in
+      Array.fold_left (fun obj x -> obj +. Float.abs x) 0.0 vals
+
+    (* generate a list of points to evalaute the the objective
+     * function at. Points are centered at x and the "star" of points
+     * has size alpha. *)
+    let get_test_points (x : vect) (alpha : float) = 
+      let pairs = Array.mapi (fun i coord ->
+                      let x'0 = Array.copy x in
+                      let x'1 = Array.copy x in
+                      Array.set x'0 i (coord -. alpha);
+                      Array.set x'1 i (coord +. alpha);
+                      [| x'0; x'1 |]) x in
+      Array.concat ([|x|]::(Array.to_list pairs))
+
+    (* returns the index of the smallest element in 'arr' *)
+    let smallest (arr : float array) =
+      let min = ref Float.infinity in
+      let idx = ref 0 in
+      Array.iteri (fun i v -> if v < !min
+                              then (idx := i;
+                                    min := v)) arr;
+      !idx
+                              
+    (* updates the "star" by getting test points, evaluating each
+     * one, and moving to the best one or shrinking *)
+    let update_star (a : syst) (x : vect) (alpha : float) =
+      let test_points = get_test_points x alpha in
+      let objective_a = objective a in
+      let their_values = Array.map objective_a test_points in
+      (* print_endline ("Objectives: " ^ String.concat ", " (Array.to_list (Array.map Float.to_string their_values))); *)
+      let winner = smallest their_values in
+      if winner = 0 (* if the smallest was the original *)
+      then (Array.get their_values 0, x, alpha *. 0.5)
+      else (Array.get their_values winner,
+            Array.get test_points winner, alpha)
+    
+    let solve (a : syst) (x0 : vect) =
+      let rec f = fun x alpha ->
+        let (obj, new_x, new_alpha) = update_star a x alpha in
+        (* print_endline ("alpha: " ^ Float.to_string new_alpha ^ " obj: " ^ Float.to_string obj); *)
+        if obj < 0.01 then x
+        else f new_x new_alpha
+      in f x0 1000.
+    
   end

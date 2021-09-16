@@ -19,9 +19,9 @@ let system = [|
     f_sqr (x_sub 0) -@ x_sub 1;
     x_sub 1 -@ const 4.0 |]
 
-module Solver = System.MakeSystem(System.GradientOptimizer);;
+module Solver = System.MakeSystem(System.DirectOptimizer);;
 
-let z = Solver.solve system [| -2.0; -4.0; |];;
+let z = Solver.solve system [| 2.124; 2.934; |];;
 
-Array.iteri (fun i v ->
-    print_endline ("x" ^ Int.to_string i ^ " <- " ^ Float.to_string v)) z;;
+(* Array.iteri (fun i v ->
+ *     print_endline ("x" ^ Int.to_string i ^ " <- " ^ Float.to_string v)) z;; *)
