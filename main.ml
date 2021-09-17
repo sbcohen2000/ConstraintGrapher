@@ -1,4 +1,4 @@
-open Graph
+open Graphics
 
 let nodes =
   [[ (* node 0 *)
