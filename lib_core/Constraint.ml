@@ -6,8 +6,6 @@ type t = Point    of float * float (* x, y *)
        | Colinear of int * axis    (* target, constrained axis *)
        | Radial   of int * float   (* target, distance *)
 
-type node = t list
-
 (* returns the variable corresponding to 
  * the node with index 'idx' *)
 let node_x (idx : int) = idx * 2
@@ -34,12 +32,12 @@ let to_system (this_node : int) (con : t) =
                                           Fun ("sqr", [Fun ("-", [target_y; this_y])])])]);
                  Const r])]
 
-let to_system (nodes : node list) =
+let to_system (constraints : t list list) =
   (* The solution vector contains 2 * |nodes| elements,
    * two for each node representing the node's x and y 
    * coords *)
   let systems = List.mapi (fun idx node ->
                     let f = to_system idx in
                     let systems = List.map f node in
-                    List.concat systems) nodes in
+                    List.concat systems) constraints in
   Array.of_list (List.concat systems)

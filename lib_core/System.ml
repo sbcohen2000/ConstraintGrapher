@@ -125,7 +125,7 @@ module DirectOptimizer =
                       let x'1 = Array.copy x in
                       Array.set x'0 i (coord -. alpha);
                       Array.set x'1 i (coord +. alpha);
-                      [| x'0; x'1 |]) x in
+                      [| x'0; x'1 |]) x in 
       Array.concat ([|x|]::(Array.to_list pairs))
 
     (* returns the index of the smallest element in 'arr' *)

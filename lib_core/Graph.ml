@@ -20,6 +20,16 @@ let add_node (graph : 'a t) (node : 'a) =
                        [| Array.make (new_node_idx + 2) false |] in
   nodes', connections'
 
+let update_node (graph : 'a t) (idx : int) (node : 'a) =
+  let nodes, _ = graph in
+  Array.set nodes idx node
+
+let nodes (graph : 'a t) =
+  let nodes, _ = graph in nodes
+
+let size (graph : 'a t) =
+  let nodes, _ = graph in Array.length nodes
+
 let connect (graph : 'a t) (a_idx : int) (b_idx : int) =
   let _, connections = graph in
   Array.set (Array.get connections a_idx) b_idx true

@@ -1,10 +1,13 @@
-class virtual obj (invalidate : unit -> unit) =
+class virtual obj (id : int) (invalidate : unit -> unit) (on_clicked : int -> unit) =
         object(self)
+          val id = id
           val invalidate = invalidate
+          val on_clicked = on_clicked
+          
           val mutable position = (0., 0. : Geometry.Point.t)
 
-          method set_position (pos : Geometry.Point.t) =
-            position <- pos
+          method set_position (pos : Geometry.Point.t) = position <- pos
+          method get_position = position
           
           method render (cr : Cairo.context) =
             let px, py = Geometry.Rect.position (self#bounds ()) in
@@ -16,7 +19,7 @@ class virtual obj (invalidate : unit -> unit) =
             match event with
             | EventParser.CLICK (x, y) ->
                if Geometry.Rect.is_inside (self#bounds ()) (x, y) then
-                 self#on_clicked (x, y)
+                 on_clicked id
             | EventParser.DRAG _ -> ()
           
           method private virtual draw : Cairo.context -> unit
@@ -24,9 +27,9 @@ class virtual obj (invalidate : unit -> unit) =
           method private virtual on_clicked : float * float -> unit
         end;;
 
-class virtual selectable_obj (invalidate : unit -> unit) =
+class virtual selectable_obj (id : int) (invalidate : unit -> unit) (on_clicked : int -> unit) =
         object(self)
-          inherit obj (invalidate)
+          inherit obj id invalidate on_clicked
           val mutable selected = false
 
           method select () = selected <- true
@@ -42,9 +45,9 @@ class virtual selectable_obj (invalidate : unit -> unit) =
           method private virtual draw_selection : Cairo.context -> bool -> unit
         end;;
 
-class node (invalidate : unit -> unit) =
+class node (id : int) (invalidate : unit -> unit) (on_clicked : int -> unit) =
         object(_self)
-          inherit selectable_obj (invalidate)
+          inherit selectable_obj id invalidate on_clicked
 
           method private bounds () =
             let x, y = position in
