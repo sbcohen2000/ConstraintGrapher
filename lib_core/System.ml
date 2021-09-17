@@ -110,11 +110,11 @@ module DirectOptimizer =
     (* give a vector with the value of the objective function
      * of the system at x.
      * 
-     * The objective function is defined as |f_0(x)| + |f_1(x)| + ... + |f_n(x)| 
+     * The objective function is defined as f_0^2(x) + f_1^2(x) + ... + f_n^2(x) 
      * where each f_i is equation i in the system 'a' *)
     let objective (a : syst) (x : vect) =
       let vals = Array.map (fun expr -> Expression.eval (Expression. subst expr x)) a in
-      Array.fold_left (fun obj x -> obj +. Float.abs x) 0.0 vals
+      Array.fold_left (fun obj x -> obj +. Float.pow x 2.0) 0.0 vals
 
     (* generate a list of points to evalaute the the objective
      * function at. Points are centered at x and the "star" of points
@@ -138,27 +138,50 @@ module DirectOptimizer =
       !idx
                               
     (* updates the "star" by getting test points, evaluating each
-     * one, and moving to the best one or shrinking *)
+     * one, and moving to the best one or shrinking
+     * 
+     * Returns : (objective function value, new x, new alpha *)
     let update_star (a : syst) (x : vect) (alpha : float) =
       let test_points = get_test_points x alpha in
-      let objective_a = objective a in
-      let their_values = Array.map objective_a test_points in
+      let objective_of_a = objective a in
+      let their_values = Array.map objective_of_a test_points in
       (* print_endline ("Objectives: " ^ String.concat ", " (Array.to_list (Array.map Float.to_string their_values))); *)
       let winner = smallest their_values in
+      let winning_obj = Array.get their_values winner in
       if winner = 0 (* if the smallest was the original *)
-      then (Array.get their_values 0, x, alpha *. 0.5)
-      else (Array.get their_values winner,
-            Array.get test_points winner, alpha)
+      then (winning_obj, x, alpha *. 0.5)
+      else (winning_obj, Array.get test_points winner, alpha)
 
-    let vary_solution (a : syst) (x0 : vect) (dim : int) (alpha : float) =
-      let rec f = fun x -> 
-        let (obj, new_x, _) = update_star a x 0.05 in
-        let coord = Array.get new_x dim in
-        if coord > alpha
-        then Array.set new_x dim (coord -. 0.1)
-        else Array.set new_x dim (coord +. 0.1);
-        
-        if Float.abs(coord -. alpha) < 0.1 || obj > 0.1 then new_x
+    (* updates "star" by getting test points in all directions
+     * except dim, and moves the star to the best one or rotates it
+     * to face the best direction.
+     * The direction is |dim| and "forward" if dim is positive and
+     * "backward" if dim is negative
+     * 
+     * Returns : (objective function value, new x, new dim) *)
+    let update_biased_star (a : syst) (x : vect) (alpha : float) (dim : int) =
+      let test_points = get_test_points x alpha in
+      let (fwd_index, rwd_index) =
+        if dim < 0
+        then (Int.abs dim * 2 + 1, Int.abs dim * 2 + 2)
+        else (dim * 2 + 2, dim * 2 + 1) in
+      let objective_of_a = objective a in
+      let their_values = Array.map objective_of_a test_points in
+      Array.set their_values rwd_index Float.infinity; (* do not allow rwd node to win *)
+      let winner = smallest their_values in
+      let winning_obj = Array.get their_values winner in
+      if winner = 0
+      then (winning_obj, Array.get test_points fwd_index)
+      else (winning_obj, Array.get test_points winner)
+
+    let vary_solution (a : syst) (x0 : vect) (dim : int) (target : float) =
+      let rec f = fun x ->
+        let coord = Array.get x (Int.abs dim) in
+        let signed_dim = if coord < target then dim else -dim in
+        let (obj, new_x) = update_biased_star a x 0.1 signed_dim in
+        print_endline (Float.to_string obj);
+        (* print_endline (String.concat ", " (Array.to_list (Array.map Float.to_string new_x))); *)
+        if Float.abs(coord -. target) < 1. || obj > 1. then x
         else f new_x
       in f x0
     

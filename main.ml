@@ -23,19 +23,10 @@ let draw canvas cr _width _height =
 let new_soln = ref soln;;
 let handle_mouse_move d graphic_object ev_parser event =
   let x, y = GdkEvent.Motion.x event, GdkEvent.Motion.y event in
-  new_soln := Solver.vary_solution sys
-                [| Array.get !new_soln 0;
-                   Array.get !new_soln 1;
-                   Array.get !new_soln 2;
-                   Array.get !new_soln 3; |] 2 x;
-  new_soln := Solver.vary_solution sys
-                [| Array.get !new_soln 0;
-                   Array.get !new_soln 1;
-                   Array.get !new_soln 2;
-                   Array.get !new_soln 3; |] 3 y;
+  EventParser.register_move ev_parser x y;
+  new_soln := Solver.vary_solution sys !new_soln 2 x;
   graphic_object#set_position (Array.get !new_soln 2, Array.get !new_soln 3);
   d#misc#queue_draw ();
-  EventParser.register_move ev_parser x y;
   true;;
 
 let handle_mouse_down ev_parser event =
