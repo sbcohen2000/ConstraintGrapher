@@ -1,6 +1,6 @@
-type t = GraphicsObjects.obj list
+type t = GraphicsObjects.selectable_obj list
 
-let create (objects : GraphicsObjects.obj list) =
+let create (objects : t) =
   objects
 
 let draw (canvas : t) (cr : Cairo.context) =

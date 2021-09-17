@@ -15,8 +15,6 @@ let sys = Array.append sys [| Core.Expression.Const 0. |];;
 let init_guess = Array.make (Solver.n_vars sys) 0.;;
 let soln = Solver.solve sys init_guess;;
 
-let pi2 = 8. *. atan 1.
-
 let draw canvas cr _width _height =
   Canvas.draw canvas cr
 
@@ -65,3 +63,4 @@ let () =
     ignore(d#misc#connect#draw ~callback:(expose d canvas));
     w#show();
     GMain.main()
+

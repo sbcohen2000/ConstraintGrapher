@@ -179,7 +179,6 @@ module DirectOptimizer =
         let coord = Array.get x (Int.abs dim) in
         let signed_dim = if coord < target then dim else -dim in
         let (obj, new_x) = update_biased_star a x 0.1 signed_dim in
-        print_endline (Float.to_string obj);
         (* print_endline (String.concat ", " (Array.to_list (Array.map Float.to_string new_x))); *)
         if Float.abs(coord -. target) < 1. || obj > 1. then x
         else f new_x
