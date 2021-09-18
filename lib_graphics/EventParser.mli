@@ -1,5 +1,5 @@
-type event = CLICK of float * float
-           | DRAG of { start : float * float;
+type event = Click of float * float
+           | Drag of { start : float * float;
                        finish : float * float }
 
 type t

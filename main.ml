@@ -30,8 +30,12 @@ let () =
     let w = GWindow.window ~title:"GraphKit" ~width:500 ~height:400 () in
     ignore(w#connect#destroy ~callback:GMain.quit);
     let d = GMisc.drawing_area ~packing:w#add () in
-    let invalidate = d#misc#queue_draw in
-    let file = App.File.create invalidate in
+    let invalidator = d#misc#queue_draw in
+    let file = App.File.create invalidator in
+    let id1 = App.File.add_node file in
+    let id2 = App.File.add_node file in
+    App.File.add_constraint file id1 (Core.Constraint.Point (250., 250.));
+    App.File.add_constraint file id2 (Core.Constraint.Radial (id1, 100.));
     let ev_parser = EventParser.create (fun ev -> App.File.handle file ev) in
     ignore(w#event#connect#motion_notify ~callback:(handle_mouse_move ev_parser));
     ignore(w#event#connect#button_press ~callback:(handle_mouse_down ev_parser));
