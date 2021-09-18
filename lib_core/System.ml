@@ -175,21 +175,28 @@ module DirectOptimizer =
       else (winning_obj, Array.get test_points winner)
 
     let vary_solution (a : syst) (x0 : vect) (dim : int) (target : float) =
-      let rec f = fun x ->
-        let coord = Array.get x (Int.abs dim) in
-        let signed_dim = if coord < target then dim else -dim in
-        let (obj, new_x) = update_biased_star a x 0.1 signed_dim in
-        (* print_endline (String.concat ", " (Array.to_list (Array.map Float.to_string new_x))); *)
-        if Float.abs(coord -. target) < 1. || obj > 1. then x
-        else f new_x
-      in f x0
+      let x = ref x0 in
+      let coord = ref (Array.get x0 (Int.abs dim)) in
+      let obj = ref 0. in
+      while Float.abs(!coord -. target) > 1. && !obj < 1. do
+        let signed_dim = if !coord < target then dim else -dim in
+        coord := Array.get !x (Int.abs dim);
+        let (new_obj, new_x) = update_biased_star a !x 0.1 signed_dim in
+        obj := new_obj;
+        x := new_x;
+      done;
+      !x
     
     let solve (a : syst) (x0 : vect) =
-      let rec f = fun x alpha ->
-        let (obj, new_x, new_alpha) = update_star a x alpha in
-        (* print_endline ("alpha: " ^ Float.to_string new_alpha ^ " obj: " ^ Float.to_string obj); *)
-        if obj < 0.01 then x
-        else f new_x new_alpha
-      in f x0 1000.
-
+      let x = ref x0 in
+      let obj = ref Float.infinity in
+      let alpha = ref 1000. in
+      while !obj > 0.01 do
+        let (new_obj, new_x, new_alpha) = update_star a !x !alpha in
+        obj := new_obj;
+        x := new_x;
+        alpha := new_alpha;
+      done;
+      !x
+    
   end

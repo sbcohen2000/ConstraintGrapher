@@ -23,5 +23,5 @@ module Solver = System.MakeSystem(System.DirectOptimizer);;
 
 let z = Solver.solve system [| 2.124; 2.934; |];;
 
-(* Array.iteri (fun i v ->
- *     print_endline ("x" ^ Int.to_string i ^ " <- " ^ Float.to_string v)) z;; *)
+Array.iteri (fun i v ->
+    print_endline ("x" ^ Int.to_string i ^ " <- " ^ Float.to_string v)) z;;
