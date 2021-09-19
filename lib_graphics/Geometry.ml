@@ -13,6 +13,10 @@ module Point =
     let scale (a : t) (s : float) =
       let x, y = a in x *. s, y *. s
 
+    let distance (a : t) (b : t) =
+      let (ax, ay), (bx, by) = a, b in
+      Float.sqrt (Float.pow (ax -. bx) 2. +. Float.pow (ay -. by) 2.)
+    
     let zero = 0.0, 0.0
   end
 

@@ -11,7 +11,18 @@ type t = Point    of float * float (* x, y *)
 let node_x (idx : int) = idx * 2
 let node_y (idx : int) = idx * 2 + 1
 
-let to_system (this_node : int) (con : t) =
+let to_string (con : t) =
+  match con with
+  | Point (x, y) ->
+     "Point (" ^ Float.to_string x ^ ", " ^ Float.to_string y ^ ")"
+  | Colinear (targ, Horizontal) ->
+     "Colinear @ " ^ Int.to_string targ ^ " (Horizontal)"
+  | Colinear (targ, Vertical) ->
+     "Colinear @ " ^ Int.to_string targ ^ " (Vertical)"
+  | Radial (targ, r) ->
+     "Radial @ " ^ Int.to_string targ ^ " r: " ^ Float.to_string r
+
+let con_to_system (this_node : int) (con : t) =
   let open Expression in
   match con with
   | Point (x, y) -> (* this_node's x = x, this_node's y = y *)
@@ -37,7 +48,7 @@ let to_system (constraints : t list list) =
    * two for each node representing the node's x and y 
    * coords *)
   let systems = List.mapi (fun idx node ->
-                    let f = to_system idx in
+                    let f = con_to_system idx in
                     let systems = List.map f node in
                     List.concat systems) constraints in
   Array.of_list (List.concat systems)

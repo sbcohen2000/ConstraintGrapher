@@ -152,6 +152,7 @@ module DirectOptimizer =
       then (winning_obj, x, alpha *. 0.5)
       else (winning_obj, Array.get test_points winner, alpha)
 
+    type direction = Fwd of int | Rwd of int
     (* updates "star" by getting test points in all directions
      * except dim, and moves the star to the best one or rotates it
      * to face the best direction.
@@ -159,12 +160,12 @@ module DirectOptimizer =
      * "backward" if dim is negative
      * 
      * Returns : (objective function value, new x, new dim) *)
-    let update_biased_star (a : syst) (x : vect) (alpha : float) (dim : int) =
+    let update_biased_star (a : syst) (x : vect) (alpha : float) (dim : direction) =
       let test_points = get_test_points x alpha in
       let (fwd_index, rwd_index) =
-        if dim < 0
-        then (Int.abs dim * 2 + 1, Int.abs dim * 2 + 2)
-        else (dim * 2 + 2, dim * 2 + 1) in
+        match dim with
+        | Fwd i -> (i * 2 + 2, i * 2 + 1)
+        | Rwd i -> (i * 2 + 1, i * 2 + 1) in
       let objective_of_a = objective a in
       let their_values = Array.map objective_of_a test_points in
       Array.set their_values rwd_index Float.infinity; (* do not allow rwd node to win *)
@@ -178,10 +179,10 @@ module DirectOptimizer =
       let x = ref x0 in
       let coord = ref (Array.get x0 (Int.abs dim)) in
       let obj = ref 0. in
-      while Float.abs(!coord -. target) > 1. && !obj < 1. do
-        let signed_dim = if !coord < target then dim else -dim in
+      while Float.abs(target -. !coord) > 0.1 && !obj < 0.1 do
+        let directed_dim = if !coord < target then Fwd dim else Rwd dim in
         coord := Array.get !x (Int.abs dim);
-        let (new_obj, new_x) = update_biased_star a !x 0.1 signed_dim in
+        let (new_obj, new_x) = update_biased_star a !x 0.1 directed_dim in
         obj := new_obj;
         x := new_x;
       done;
@@ -193,6 +194,7 @@ module DirectOptimizer =
       let alpha = ref 1000. in
       while !obj > 0.01 do
         let (new_obj, new_x, new_alpha) = update_star a !x !alpha in
+        (* print_endline ("obj: " ^ Float.to_string new_obj); *)
         obj := new_obj;
         x := new_x;
         alpha := new_alpha;
