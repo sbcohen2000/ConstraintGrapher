@@ -4,6 +4,11 @@ let (selection : int list ref) = ref [];;
 
 module Solver = Core.System.MakeSystem(Core.System.DirectOptimizer);;
 
+let draw cr =
+  List.iter (fun (_, g_obj) ->
+      g_obj#render cr) !nodes;
+  true;;
+
 let system_vector (g_objs : Graphics.GraphicsObjects.node list) =
   let positions = List.map (fun g_obj ->
                       let x, y = g_obj#get_position in
@@ -27,6 +32,18 @@ let solve () =
                                    Array.get soln (2 * idx + 1)))
     g_objs;;
 
+let create_solution_updater (dim : int) =
+  let cs, g_objs = List.fold_right (fun (c, g_obj) (cs, g_objs) ->
+                       (c::cs, g_obj::g_objs)) !nodes ([], []) in
+  let system = Core.Constraint.to_system cs in
+  fun (target : float) -> 
+  let init_guess = system_vector g_objs in
+  let soln = Solver.vary_solution system init_guess dim target in
+  List.iteri (fun idx g_obj ->
+      g_obj#set_position (Array.get soln (2 * idx),
+                          Array.get soln (2 * idx + 1)))
+    g_objs;;
+
 let update_selection (id : int) =
   if List.exists (fun i -> i = id) !selection
   then (print_endline ("deselecting " ^ Int.to_string id);
@@ -36,31 +53,64 @@ let update_selection (id : int) =
         selection := id::!selection;
         let (_, node) = List.nth !nodes id in node#select ());;
 
-let on_mouse_move _invalidate event =
-  let _x, _y = GdkEvent.Motion.x event, GdkEvent.Motion.y event in
+let deselect_all () =
+  print_endline "deselecting all";
+  selection := [];
+  List.iter (fun (_, g_obj) -> g_obj#deselect ()) !nodes;;
+
+(* ==== MOUSE CONTROLS ====================================================== *)
+
+let node_underneath (x, y : float * float) =
+  List.find_opt (fun (_, g_obj) ->
+                    g_obj#is_inside (x, y)) !nodes
+
+type updaters = { x_updater : float -> unit;
+                  y_updater : float -> unit }
+type drag = Pending of updaters (* clicked down, not dragged yet *)
+          | Valid of updaters (* dragging *)
+          | Invalid;; (* clicked on nothing *)
+let current_drag = ref Invalid;;
+
+let on_mouse_move invalidate event =
+  let x, y = GdkEvent.Motion.x event, GdkEvent.Motion.y event in
+  (match !current_drag with
+   | Pending upd -> current_drag := Valid upd
+   | Valid upd ->
+      upd.x_updater x;
+      upd.y_updater y;
+      invalidate ();
+   | Invalid -> ());
   true;;
 
 let on_mouse_down _invalidate event =
   let _button = GdkEvent.Button.button event in
-  let _x, _y = GdkEvent.Button.x event, GdkEvent.Button.y event in
+  let x, y = GdkEvent.Button.x event, GdkEvent.Button.y event in
+  let clicked = node_underneath (x, y) in
+  (match clicked with
+   | Some (_, g_obj) ->
+      let x_dim = g_obj#get_id * 2 in
+      let y_dim = g_obj#get_id * 2 + 1 in
+      let (upd : updaters) = {
+          x_updater = create_solution_updater x_dim;
+          y_updater = create_solution_updater y_dim } in
+      current_drag := Pending upd
+   | None -> current_drag := Invalid);
   true;;
 
 let on_mouse_up invalidate event =
+  current_drag := Invalid;
   let _button = GdkEvent.Button.button event in
   let x, y = GdkEvent.Button.x event, GdkEvent.Button.y event in
   (* check if we clicked any nodes *)
-  let clicked = List.find_opt (fun (_, g_obj) ->
-                    g_obj#is_inside (x, y)) !nodes in
-  (match clicked with Some (_, g_obj) -> (update_selection g_obj#get_id;
-                                          invalidate ())
-                    | None -> ());
+  let clicked = node_underneath (x, y) in
+  (match clicked with
+   | Some (_, g_obj) -> update_selection g_obj#get_id
+   | None -> deselect_all ());
+  invalidate ();
   print_endline ("click at " ^ Float.to_string x ^ ", " ^ Float.to_string y);
   true;;
 
-let draw cr =
-  List.iter (fun (_, g_obj) ->
-      g_obj#render cr) !nodes;
-  true;;
+(* ==== TOOLBAR BUTTONS ===================================================== *)
 
 let make_toolbar_button (image_name : string) (label : string) =
   let path = "/home/sam/Documents/ConstraintGrapher/resources/" ^ image_name in
@@ -117,6 +167,8 @@ let add_toolbar_buttons (toolbar : GButton.toolbar) (invalidator : unit -> unit)
       ignore (button#connect#clicked ~callback:(callback invalidator));
       toolbar#insert button)
     buttons;;
+
+(* ==== MAIN ================================================================ *)
 
 let () =
   ignore (GMain.init ()) in
