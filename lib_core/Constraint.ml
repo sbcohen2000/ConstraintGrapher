@@ -20,9 +20,9 @@ let target_string_opt (con : t) =
 let description (con : t) =
   match con with
   | Point (x, y) -> Printf.sprintf "Locked to (%0.2f, %0.2f)" x y
-  | Colinear (_, Horizontal) -> "Horizontally constrained"
-  | Colinear (_, Vertical) -> "Vertically constrained"
-  | Radial (_, r) -> Printf.sprintf "Constrained to distance of %0.2f" r
+  | Colinear (_, Horizontal) -> "Horizontal lock"
+  | Colinear (_, Vertical) -> "Vertical lock"
+  | Radial (_, r) -> Printf.sprintf "Distance of %0.2f" r
 
 let to_string (con : t) =
   match con with

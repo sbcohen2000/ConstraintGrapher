@@ -144,14 +144,11 @@ let on_mouse_up invalidate table_view event =
   let x, y = GdkEvent.Button.x event, GdkEvent.Button.y event in
   (* check if we clicked any nodes *)
   let clicked = node_underneath (x, y) in
-  (match clicked with
-   | Some (_, g_obj) ->
-      (* if the user just dragged, don't register
-       * a selection when they release the mouse *)
-      (match !current_drag with
-       | Valid _ -> ()
-       | _ -> update_selection g_obj#get_id table_view)
-   | None -> deselect_all table_view);
+  (match clicked, !current_drag with
+   | (Some _, Valid _) -> ()
+   | (Some (_, g_obj), _) -> update_selection g_obj#get_id table_view
+   | (None, Valid _) -> ()
+   | (None, _) -> deselect_all table_view);
   current_drag := Invalid;
   invalidate ();
   print_endline ("click at " ^ Float.to_string x ^ ", " ^ Float.to_string y);
@@ -204,7 +201,12 @@ let on_vert_con_pressed invalidate () =
   print_endline "vertical constraint pressed";;
 
 let on_lock_con_pressed _invalidate () =
-  print_endline "lock constraint pressed";;
+  nodes := List.mapi (fun idx (cs, g_obj) ->
+               let cs' = if List.exists (fun i -> i = idx) !selection
+                         then let x, y = g_obj#get_position in
+                              let con = Core.Constraint.Point (x, y) in
+                              con::cs
+                         else cs in (cs', g_obj)) !nodes
 
 let on_rad_con_pressed invalidate () =
   add_constraints_to_selected (fun n -> Core.Constraint.Radial (n, 100.));
