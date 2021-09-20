@@ -4,6 +4,38 @@ let (selection : int list ref) = ref [];;
 
 module Solver = Core.System.MakeSystem(Core.System.DirectOptimizer);;
 
+(* ==== CONSTRAINT TABLE ==================================================== *)
+
+let c_table_cols = new GTree.column_list;;
+let target = c_table_cols#add Gobject.Data.string_option;;
+let description = c_table_cols#add Gobject.Data.string;;
+
+let update_model () =
+  let store = GTree.tree_store c_table_cols in
+  let rec last = fun lst ->
+    match lst with
+    | [] -> None
+    | [n] -> Some n
+    | _::ns -> last ns in
+  let selected_node = last !selection in
+  let cs = match selected_node with
+    | None -> [] 
+    | Some n -> let (cs, _) = List.nth !nodes n in cs in
+  List.iter (fun con ->
+      let row = store#append () in
+      store#set ~row ~column:target
+        (Core.Constraint.target_string_opt con);
+      store#set ~row ~column:description
+        (Core.Constraint.description con)) cs;
+  store;;
+
+let set_model (table_view : GTree.view) =
+  let model = update_model () in
+  let model = model#coerce in
+  table_view#set_model (Some model);;
+
+(* ==== SOLUTION SOLVING ==================================================== *)
+
 let draw cr =
   List.iter (fun (_, g_obj) ->
       g_obj#render cr) !nodes;
@@ -44,19 +76,29 @@ let create_solution_updater (dim : int) =
                           Array.get soln (2 * idx + 1)))
     g_objs;;
 
-let update_selection (id : int) =
+let update_selection (id : int) (table_view : GTree.view) =
   if List.exists (fun i -> i = id) !selection
   then (print_endline ("deselecting " ^ Int.to_string id);
         selection := List.filter (fun i -> not (i = id)) !selection;
-        let (_, node) = List.nth !nodes id in node#deselect ())
+        let (_, node) = List.nth !nodes id in
+        node#set_selection Graphics.GraphicsObjects.None)
   else (print_endline ("selecting " ^ Int.to_string id);
-        selection := id::!selection;
-        let (_, node) = List.nth !nodes id in node#select ());;
+        match !selection with
+        | [] -> 
+           selection := id::!selection;
+           let (_, node) = List.nth !nodes id in
+           node#set_selection Graphics.GraphicsObjects.Primary;
+        | _ ->
+           selection := id::!selection;
+           let (_, node) = List.nth !nodes id in
+           node#set_selection Graphics.GraphicsObjects.Secondary);
+  set_model table_view;;
 
-let deselect_all () =
+let deselect_all (table_view : GTree.view) =
   print_endline "deselecting all";
   selection := [];
-  List.iter (fun (_, g_obj) -> g_obj#deselect ()) !nodes;;
+  List.iter (fun (_, g_obj) -> g_obj#set_selection Graphics.GraphicsObjects.None) !nodes;
+  set_model table_view;;
 
 (* ==== MOUSE CONTROLS ====================================================== *)
 
@@ -97,15 +139,20 @@ let on_mouse_down _invalidate event =
    | None -> current_drag := Invalid);
   true;;
 
-let on_mouse_up invalidate event =
-  current_drag := Invalid;
+let on_mouse_up invalidate table_view event =
   let _button = GdkEvent.Button.button event in
   let x, y = GdkEvent.Button.x event, GdkEvent.Button.y event in
   (* check if we clicked any nodes *)
   let clicked = node_underneath (x, y) in
   (match clicked with
-   | Some (_, g_obj) -> update_selection g_obj#get_id
-   | None -> deselect_all ());
+   | Some (_, g_obj) ->
+      (* if the user just dragged, don't register
+       * a selection when they release the mouse *)
+      (match !current_drag with
+       | Valid _ -> ()
+       | _ -> update_selection g_obj#get_id table_view)
+   | None -> deselect_all table_view);
+  current_drag := Invalid;
   invalidate ();
   print_endline ("click at " ^ Float.to_string x ^ ", " ^ Float.to_string y);
   true;;
@@ -127,31 +174,42 @@ let on_add_pressed invalidate () =
   invalidate ();
   print_endline "added node";;
 
+(* apply_con is a function that accepts the target node and returns
+ * a constraint applying that node as the target *)
+let add_constraints_to_selected (apply_con : int -> Core.Constraint.t) =
+  match !selection with
+  | [] -> ()
+  | [_] -> ()
+  | n::ns ->
+     let con = apply_con n in
+     nodes := List.mapi (fun idx (cs, g_obj) ->
+                  (* if node in ns, add con to its list of constraints *)
+                  let cs' = 
+                    if List.exists (fun i -> i = idx) ns
+                    then con::cs else cs in (cs', g_obj)) !nodes
+
 let on_delete_pressed _invalidate () =
   print_endline "delete pressed";;
 
 let on_hor_con_pressed invalidate () =
-  (match !selection with
-   | [] -> ()
-   | [_] -> ()
-   | n::ns ->
-      let con = Core.Constraint.Colinear (n, Core.Constraint.Horizontal) in
-      nodes := List.mapi (fun idx (cs, g_obj) ->
-                   (* if node in ns, add con to its list of constraints *)
-                   let cs' = 
-                     if List.exists (fun i -> i = idx) ns
-                     then con::cs else cs in (cs', g_obj)) !nodes);
+  add_constraints_to_selected (fun n -> Core.Constraint.Colinear (n, Core.Constraint.Horizontal));
   solve ();
   invalidate ();
   print_endline "horizontal constraint pressed";;
 
-let on_vert_con_pressed _invalidate () =
+let on_vert_con_pressed invalidate () =
+  add_constraints_to_selected (fun n -> Core.Constraint.Colinear (n, Core.Constraint.Vertical));
+  solve ();
+  invalidate ();
   print_endline "vertical constraint pressed";;
 
 let on_lock_con_pressed _invalidate () =
   print_endline "lock constraint pressed";;
 
-let on_rad_con_pressed _invalidate () =
+let on_rad_con_pressed invalidate () =
+  add_constraints_to_selected (fun n -> Core.Constraint.Radial (n, 100.));
+  solve ();
+  invalidate ();
   print_endline "radial constraint pressed";;
 
 let add_toolbar_buttons (toolbar : GButton.toolbar) (invalidator : unit -> unit) =
@@ -191,18 +249,31 @@ let () =
     (* toolbar *)
     let tb = GButton.toolbar ~packing:vb#pack () in
 
+    (* pane *)
+    let pane = GPack.paned `HORIZONTAL ~packing:(vb#add) () in
+    
     (* drawing area *)
-    let d = GMisc.drawing_area ~packing:vb#add () in
+    let d = GMisc.drawing_area ~packing:(pane#pack1 ~resize:true ~shrink:false)() in
+    
     let invalidate = d#misc#queue_draw in
-
     add_toolbar_buttons tb invalidate;
+    ignore(d#misc#connect#draw ~callback:draw);
+
+    (* constraint table *)
+    let model = update_model () in
+    let table_view = GTree.view ~model ~packing:(pane#pack2 ~resize:false ~shrink:true) () in
+
+    let col = GTree.view_column ~title:"Target" ()
+                ~renderer:(GTree.cell_renderer_text[], ["text", target]) in
+    ignore (table_view#append_column col);
+    let col = GTree.view_column ~title:"Description" ()
+                ~renderer:(GTree.cell_renderer_text[], ["text", description]) in
+    ignore (table_view#append_column col);
 
     d#set_events [`BUTTON_RELEASE; `BUTTON_PRESS; `BUTTON_MOTION ];
     ignore(d#event#connect#motion_notify ~callback:(on_mouse_move invalidate));
     ignore(d#event#connect#button_press ~callback:(on_mouse_down invalidate));
-    ignore(d#event#connect#button_release ~callback:(on_mouse_up invalidate));
-    
-    ignore(d#misc#connect#draw ~callback:draw);
+    ignore(d#event#connect#button_release ~callback:(on_mouse_up invalidate table_view));
     
     w#add_accel_group accel_group;
     w#show();
