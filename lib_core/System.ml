@@ -191,7 +191,7 @@ module DirectOptimizer =
       let (fwd_index, rwd_index) =
         match dim with
         | Fwd i -> (i * 2 + 2, i * 2 + 1)
-        | Rwd i -> (i * 2 + 1, i * 2 + 1) in
+        | Rwd i -> (i * 2 + 1, i * 2 + 2) in
       let objective_of_a = objective a in
       let n_dims = Array.length x in
       let their_values = map_points test_points n_dims objective_of_a in
@@ -204,19 +204,23 @@ module DirectOptimizer =
 
     let vary_solution (a : syst) (x0 : vect) (dim : int) (target : float) =
       let gtp = test_point_generator (Array.length x0) in
-      let x = ref x0 in
+      let iters = ref 0 in
+      let x     = ref x0 in
       let coord = ref (Array.get x0 (Int.abs dim)) in
-      let obj = ref 0. in
-      while Float.abs(target -. !coord) > 0.1 && !obj < 0.1 do
+      let obj   = ref 0. in
+      while Float.abs(target -. !coord) > 1.
+            && !obj < 0.2
+            && !iters < 100 do
+        iters := !iters + 1;
         let directed_dim = if !coord < target then Fwd dim else Rwd dim in
-        coord := Array.get !x (Int.abs dim);
-        let (new_obj, new_x) = update_biased_star gtp a !x 0.02 directed_dim in
+        coord := Array.get !x dim;
+        let (new_obj, new_x) = update_biased_star gtp a !x 0.1 directed_dim in
         obj := new_obj;
         x := new_x;
         (* Printf.printf "obj: %.3f\n, target: %.1f, curr: %.1f" !obj target !coord; *)
       done;
       !x
-    
+
     let solve (a : syst) (x0 : vect) =
       let gtp = test_point_generator (Array.length x0) in
       let x = ref x0 in
