@@ -1,8 +1,13 @@
-type node = Core.Constraint.t list * Graphics.GraphicsObjects.node;;
+type node = { constraints : Core.Constraint.t list;
+              g_obj : Graphics.GraphicsObjects.node;
+              id : int };;
 let (nodes : node list ref) = ref [];;
 let (selection : int list ref) = ref [];;
 
 module Solver = Core.System.MakeSystem(Core.System.DirectOptimizer);;
+
+let node_n (id : int) =
+  List.find (fun node -> id = node.id) !nodes
 
 (* ==== CONSTRAINT TABLE ==================================================== *)
 
@@ -20,7 +25,7 @@ let update_model () =
   let selected_node = last !selection in
   let cs = match selected_node with
     | None -> [] 
-    | Some n -> let (cs, _) = List.nth !nodes n in cs in
+    | Some n -> let node = node_n n in node.constraints in
   List.iter (fun con ->
       let row = store#append () in
       store#set ~row ~column:target
@@ -34,25 +39,34 @@ let set_model (table_view : GTree.view) =
   let model = model#coerce in
   table_view#set_model (Some model);;
 
-(* ==== SOLUTION SOLVING ==================================================== *)
+(* ==== GEOMETRIC SOLVING =================================================== *)
 
 let draw cr =
   (* white background *)
   Cairo.set_source_rgb cr 1. 1. 1.;
   Cairo.paint cr;
-  List.iter (fun (_, g_obj) ->
-      g_obj#render cr) !nodes;
+  List.iter (fun node ->
+      node.g_obj#render cr) !nodes;
   true;;
 
-let system_vector (g_objs : Graphics.GraphicsObjects.node list) =
-  let positions = List.map (fun g_obj ->
-                      let x, y = g_obj#get_position in
-                      [| x; y |]) g_objs in
-  Array.concat positions
+let system_vector () =
+  let size = 2 * (List.length !nodes) in
+  let vect = Array.create_float size in
+  List.iter (fun node ->
+      let x, y = node.g_obj#get_position in
+      Array.set vect (node.id * 2) x;
+      Array.set vect (node.id * 2 + 1) y) !nodes;
+  vect
+
+let ordered_constraints () =
+  let sorted_nodes = List.sort
+                       (fun a b -> Int.compare a.id b.id)
+                       !nodes in
+  List.fold_right (fun node cs ->
+      node.constraints::cs) sorted_nodes []
 
 let solve () =
-  let cs, g_objs = List.fold_right (fun (c, g_obj) (cs, g_objs) ->
-                       (c::cs, g_obj::g_objs)) !nodes ([], []) in
+  let cs = ordered_constraints () in
   List.iteri (fun idx cs -> print_endline (Int.to_string idx ^ ":");
                             List.iter (fun con ->
                                 print_endline ("\t" ^ (Core.Constraint.to_string con)))
@@ -60,54 +74,51 @@ let solve () =
     cs;
   let system = Core.Constraint.to_system cs in
   Array.iter (fun expr -> print_endline (Core.Expression.to_string expr)) system;
-  let init_guess = system_vector g_objs in
+  let init_guess = system_vector () in
   let soln = Solver.solve system init_guess in
-  List.iteri (fun idx g_obj ->
-               g_obj#set_position (Array.get soln (2 * idx),
-                                   Array.get soln (2 * idx + 1)))
-    g_objs;;
+  List.iter (fun node ->
+               node.g_obj#set_position (Array.get soln (2 * node.id),
+                                        Array.get soln (2 * node.id + 1)))
+    !nodes;;
 
 let create_solution_updater (dim : int) =
-  let cs, g_objs = List.fold_right (fun (c, g_obj) (cs, g_objs) ->
-                       (c::cs, g_obj::g_objs)) !nodes ([], []) in
+  let cs = ordered_constraints () in
   let system = Core.Constraint.to_system cs in
   fun (target : float) -> 
-  let init_guess = system_vector g_objs in
+  let init_guess = system_vector () in
   let soln = Solver.vary_solution system init_guess dim target in
-  List.iteri (fun idx g_obj ->
-      g_obj#set_position (Array.get soln (2 * idx),
-                          Array.get soln (2 * idx + 1)))
-    g_objs;;
+  List.iter (fun node ->
+      node.g_obj#set_position (Array.get soln (2 * node.id),
+                               Array.get soln (2 * node.id + 1)))
+    !nodes;;
 
 let update_selection (id : int) (table_view : GTree.view) =
+  let node = node_n id in
   if List.exists (fun i -> i = id) !selection
   then (print_endline ("deselecting " ^ Int.to_string id);
         selection := List.filter (fun i -> not (i = id)) !selection;
-        let (_, node) = List.nth !nodes id in
-        node#set_selection Graphics.GraphicsObjects.None)
+        node.g_obj#set_selection Graphics.GraphicsObjects.None)
   else (print_endline ("selecting " ^ Int.to_string id);
         match !selection with
         | [] -> 
            selection := id::!selection;
-           let (_, node) = List.nth !nodes id in
-           node#set_selection Graphics.GraphicsObjects.Primary;
+           node.g_obj#set_selection Graphics.GraphicsObjects.Primary;
         | _ ->
            selection := id::!selection;
-           let (_, node) = List.nth !nodes id in
-           node#set_selection Graphics.GraphicsObjects.Secondary);
+           node.g_obj#set_selection Graphics.GraphicsObjects.Secondary);
   set_model table_view;;
 
 let deselect_all (table_view : GTree.view) =
   print_endline "deselecting all";
   selection := [];
-  List.iter (fun (_, g_obj) -> g_obj#set_selection Graphics.GraphicsObjects.None) !nodes;
+  List.iter (fun node -> node.g_obj#set_selection Graphics.GraphicsObjects.None) !nodes;
   set_model table_view;;
 
 (* ==== MOUSE CONTROLS ====================================================== *)
 
 let node_underneath (x, y : float * float) =
-  List.find_opt (fun (_, g_obj) ->
-                    g_obj#is_inside (x, y)) !nodes
+  List.find_opt (fun node ->
+                    node.g_obj#is_inside (x, y)) !nodes
 
 type updaters = { x_updater : float -> unit;
                   y_updater : float -> unit }
@@ -132,9 +143,10 @@ let on_mouse_down _invalidate event =
   let x, y = GdkEvent.Button.x event, GdkEvent.Button.y event in
   let clicked = node_underneath (x, y) in
   (match clicked with
-   | Some (_, g_obj) ->
-      let x_dim = g_obj#get_id * 2 in
-      let y_dim = g_obj#get_id * 2 + 1 in
+   | Some node ->
+      let x_dim = node.id * 2 in
+      let y_dim = node.id * 2 + 1 in
+      print_endline ("starting to drag with x_dim: " ^ Int.to_string x_dim ^ ", y_dim: " ^ Int.to_string y_dim);
       let (upd : updaters) = {
           x_updater = create_solution_updater x_dim;
           y_updater = create_solution_updater y_dim } in
@@ -148,14 +160,14 @@ let on_mouse_up invalidate table_view event =
   (* check if we clicked any nodes *)
   let clicked = node_underneath (x, y) in
   (match clicked, !current_drag with
-   | (Some  (_, g_obj), Valid (sx, sy, _)) ->
+   | (Some node, Valid (sx, sy, _)) ->
       let d = Graphics.Geometry.Point.distance (x, y) (sx, sy) in
-      (* if the user dragged for fewer than 5 units, treat it as a click *)
-      if d < 5. then
-        update_selection g_obj#get_id table_view
+      (* if the user dragged for fewer than 2 units, treat it as a click *)
+      if d < 2. then
+        update_selection node.id table_view
       else ()
-   | (Some (_, g_obj), _) ->
-      update_selection g_obj#get_id table_view
+   | (Some node, _) ->
+      update_selection node.id table_view
    | (None, Valid _) -> ()
    | (None, _) -> deselect_all table_view);
   current_drag := Invalid;
@@ -165,10 +177,13 @@ let on_mouse_up invalidate table_view event =
 (* ==== TOOLBAR BUTTONS ===================================================== *)
 
 let on_add_pressed invalidate () =
-  let new_id = List.length !nodes in
-  let g_obj = new Graphics.GraphicsObjects.node new_id (fun () -> ()) in
+  let id = List.length !nodes in
+  let g_obj = new Graphics.GraphicsObjects.node () in
   g_obj#set_position (Random.float 250., Random.float 200.);
-  nodes := !nodes @ [([], g_obj)];
+  let new_node = {
+      constraints = [];
+      g_obj; id; } in
+  nodes := new_node::!nodes;
   invalidate ();
   print_endline "added node";;
 
@@ -180,14 +195,16 @@ let add_constraints_to_selected (apply_con : int -> Core.Constraint.t) =
   | [_] -> ()
   | n::ns ->
      let con = apply_con n in
-     nodes := List.mapi (fun idx (cs, g_obj) ->
+     nodes := List.map (fun node ->
                   (* if node in ns, add con to its list of constraints *)
-                  let cs' = 
-                    if List.exists (fun i -> i = idx) ns
-                    then con::cs else cs in (cs', g_obj)) !nodes
+                  let cs' =
+                    if List.exists (fun sel -> sel = node.id) ns
+                    then con::node.constraints
+                    else node.constraints in
+                  { node with constraints = cs' }) !nodes
 
 let on_delete_pressed _invalidate () =
-  print_endline "delete pressed";;
+  print_endline "not implemented";;
 
 let on_hor_con_pressed invalidate () =
   add_constraints_to_selected (fun n -> Core.Constraint.Colinear (n, Core.Constraint.Horizontal));
@@ -202,12 +219,13 @@ let on_vert_con_pressed invalidate () =
   print_endline "vertical constraint pressed";;
 
 let on_lock_con_pressed _invalidate () =
-  nodes := List.mapi (fun idx (cs, g_obj) ->
-               let cs' = if List.exists (fun i -> i = idx) !selection
-                         then let x, y = g_obj#get_position in
+  nodes := List.map (fun node ->
+               let cs' = if List.exists (fun sel -> sel = node.id) !selection
+                         then let x, y = node.g_obj#get_position in
                               let con = Core.Constraint.Point (x, y) in
-                              con::cs
-                         else cs in (cs', g_obj)) !nodes
+                              con::node.constraints
+                         else node.constraints in
+             { node with constraints = cs' }) !nodes
 
 let on_rad_con_pressed invalidate () =
   add_constraints_to_selected (fun n -> Core.Constraint.Radial (n, 100.));
@@ -293,6 +311,10 @@ let () =
     ignore(d#event#connect#motion_notify ~callback:(on_mouse_move invalidate));
     ignore(d#event#connect#button_press ~callback:(on_mouse_down invalidate));
     ignore(d#event#connect#button_release ~callback:(on_mouse_up invalidate table_view));
+
+    (* text entry area *)
+    let entry = GEdit.entry ~packing:vb#pack () in
+    entry#set_has_focus false;
     
     w#add_accel_group accel_group;
     w#show();

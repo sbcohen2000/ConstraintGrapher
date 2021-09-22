@@ -11,11 +11,16 @@ type t = Point    of float * float (* x, y *)
 let node_x (idx : int) = idx * 2
 let node_y (idx : int) = idx * 2 + 1
 
-let target_string_opt (con : t) =
+let target_opt (con : t) =
   match con with
   | Point _ -> None
-  | Colinear (targ, _) -> Some (Int.to_string targ)
-  | Radial (targ, _) -> Some (Int.to_string targ)
+  | Colinear (targ, _) -> Some targ
+  | Radial (targ, _) -> Some targ
+
+let target_string_opt (con : t) =
+  match target_opt con with
+  | None -> None
+  | Some i -> Some (Int.to_string i)
 
 let description (con : t) =
   match con with

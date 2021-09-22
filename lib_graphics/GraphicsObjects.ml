@@ -1,13 +1,9 @@
-class virtual obj (id : int) (invalidate : unit -> unit) =
+class virtual obj () =
         object(self)
-          val id = id
-          val invalidate = invalidate
-          
           val mutable position = (0., 0. : Geometry.Point.t)
 
           method set_position (pos : Geometry.Point.t) = position <- pos
           method get_position = position
-          method get_id = id
           
           method is_inside (p : Geometry.Point.t) =
             Geometry.Rect.is_inside (self#bounds ()) p
@@ -32,9 +28,9 @@ type select_mode = None
                  | Secondary
                  | Primary
 
-class virtual selectable_obj (id : int) (invalidate : unit -> unit) =
+class virtual selectable_obj () =
         object(self)
-          inherit obj id invalidate
+          inherit obj ()
           val mutable mode = None
 
           method set_selection new_mode = mode <- new_mode
@@ -45,9 +41,9 @@ class virtual selectable_obj (id : int) (invalidate : unit -> unit) =
           method private virtual draw_selection : Cairo.context -> select_mode -> unit
         end;;
 
-class node (id : int) (invalidate : unit -> unit) =
+class node () = 
 object(_self)
-  inherit selectable_obj id invalidate
+  inherit selectable_obj ()
   val size = 10.
   
   method private bounds () =
@@ -78,13 +74,4 @@ object(_self)
          Cairo.arc cr size_div_2 size_div_2 ~r:size_div_2 ~a1:0. ~a2:(3.1415 *. 2.);
          Cairo.fill cr;
        end);
-
-    (* draw text *)
-    (* Cairo.set_source_rgb cr 1. 1. 1.;
-     * Cairo.set_font_size cr (size *. 0.75);
-     * let text_extent = Cairo.text_extents cr (Int.to_string id) in
-     * Cairo.move_to cr
-     *   (size *. 0.5 -. text_extent.width /. 2. -. text_extent.x_bearing)
-     *   (size *. 0.5 -. text_extent.height /. 2. -. text_extent.y_bearing);
-     * Cairo.show_text cr (Int.to_string id); *)
 end;;
