@@ -71,7 +71,7 @@ object(_self)
     (match mode with
      | Primary -> begin
          Cairo.set_line_width cr 3.;
-         Cairo.rectangle cr 0. 0. ~w:(size -. 3.) ~h:(size -. 3.);
+         Cairo.rectangle cr (1.5) (1.5) ~w:(size -. 3.) ~h:(size -. 3.);
          Cairo.stroke cr;
        end
      | _ -> begin
