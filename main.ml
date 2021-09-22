@@ -37,6 +37,9 @@ let set_model (table_view : GTree.view) =
 (* ==== SOLUTION SOLVING ==================================================== *)
 
 let draw cr =
+  (* white background *)
+  Cairo.set_source_rgb cr 1. 1. 1.;
+  Cairo.paint cr;
   List.iter (fun (_, g_obj) ->
       g_obj#render cr) !nodes;
   true;;
@@ -161,13 +164,6 @@ let on_mouse_up invalidate table_view event =
 
 (* ==== TOOLBAR BUTTONS ===================================================== *)
 
-let make_toolbar_button (image_name : string) (label : string) =
-  let path = "/home/sam/Documents/ConstraintGrapher/resources/" ^ image_name in
-  let image = GMisc.image ~file:path () in
-  let button = GButton.tool_button ~label ~use_underline:true () in
-  button#set_icon_widget image#coerce;
-  button;;
-
 let on_add_pressed invalidate () =
   let new_id = List.length !nodes in
   let g_obj = new Graphics.GraphicsObjects.node new_id (fun () -> ()) in
@@ -219,18 +215,34 @@ let on_rad_con_pressed invalidate () =
   invalidate ();
   print_endline "radial constraint pressed";;
 
+let make_toolbar_button (image_name : string) (label : string) =
+  let path = "/home/sam/Documents/ConstraintGrapher/resources/" ^ image_name in
+  let image = GMisc.image ~file:path () in
+  let button = GButton.tool_button ~label ~use_underline:true () in
+  button#set_icon_widget image#coerce;
+  button;;
+
+type toolbar_cb = (unit -> unit) -> unit -> unit;;
+type toolbar_item = Button of string * string * toolbar_cb
+                  | Separator;;
 let add_toolbar_buttons (toolbar : GButton.toolbar) (invalidator : unit -> unit) =
   let buttons =
-    [("add node",              "add-icon.png",      on_add_pressed);
-     ("delete node",           "trash-icon.png",    on_delete_pressed);
-     ("horizontal constraint", "hor-con-icon.png",  on_hor_con_pressed);
-     ("vertical constraint",   "vert-con-icon.png", on_vert_con_pressed);
-     ("lock constraint",       "lock-con-icon.png", on_lock_con_pressed);
-     ("radius constraint",     "rad-con-icon.png",  on_rad_con_pressed)] in
-  List.iter (fun (label, icon, callback) ->
-      let button = make_toolbar_button icon label in
-      ignore (button#connect#clicked ~callback:(callback invalidator));
-      toolbar#insert button)
+    [Button ("add node",              "add-icon.png",      on_add_pressed);
+     Button ("delete node",           "trash-icon.png",    on_delete_pressed);
+     Separator;
+     Button ("horizontal constraint", "hor-con-icon.png",  on_hor_con_pressed);
+     Button ("vertical constraint",   "vert-con-icon.png", on_vert_con_pressed);
+     Button ("lock constraint",       "lock-con-icon.png", on_lock_con_pressed);
+     Button ("radius constraint",     "rad-con-icon.png",  on_rad_con_pressed)] in
+  List.iter (fun item ->
+      match item with
+      | Button (label, icon, callback) ->
+         let button = make_toolbar_button icon label in
+         ignore (button#connect#clicked ~callback:(callback invalidator));
+         toolbar#insert button
+      | Separator ->
+         let sep = GButton.separator_tool_item () in
+         toolbar#insert sep)
     buttons;;
 
 (* ==== MAIN ================================================================ *)
