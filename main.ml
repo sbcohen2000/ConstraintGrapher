@@ -109,15 +109,15 @@ let node_underneath (x, y : float * float) =
 type updaters = { x_updater : float -> unit;
                   y_updater : float -> unit }
 type drag = Pending of updaters (* clicked down, not dragged yet *)
-          | Valid of updaters (* dragging *)
+          | Valid of float * float * updaters (* dragging *)
           | Invalid;; (* clicked on nothing *)
 let current_drag = ref Invalid;;
 
 let on_mouse_move invalidate event =
   let x, y = GdkEvent.Motion.x event, GdkEvent.Motion.y event in
   (match !current_drag with
-   | Pending upd -> current_drag := Valid upd
-   | Valid upd ->
+   | Pending upd -> current_drag := Valid (x, y, upd)
+   | Valid (_, _, upd) ->
       upd.x_updater x;
       upd.y_updater y;
       invalidate ();
@@ -145,13 +145,18 @@ let on_mouse_up invalidate table_view event =
   (* check if we clicked any nodes *)
   let clicked = node_underneath (x, y) in
   (match clicked, !current_drag with
-   | (Some _, Valid _) -> ()
-   | (Some (_, g_obj), _) -> update_selection g_obj#get_id table_view
+   | (Some  (_, g_obj), Valid (sx, sy, _)) ->
+      let d = Graphics.Geometry.Point.distance (x, y) (sx, sy) in
+      (* if the user dragged for fewer than 5 units, treat it as a click *)
+      if d < 5. then
+        update_selection g_obj#get_id table_view
+      else ()
+   | (Some (_, g_obj), _) ->
+      update_selection g_obj#get_id table_view
    | (None, Valid _) -> ()
    | (None, _) -> deselect_all table_view);
   current_drag := Invalid;
   invalidate ();
-  print_endline ("click at " ^ Float.to_string x ^ ", " ^ Float.to_string y);
   true;;
 
 (* ==== TOOLBAR BUTTONS ===================================================== *)
@@ -280,4 +285,3 @@ let () =
     w#add_accel_group accel_group;
     w#show();
     GMain.main()
-
