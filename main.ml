@@ -15,7 +15,7 @@ let c_table_cols = new GTree.column_list;;
 let target = c_table_cols#add Gobject.Data.string_option;;
 let description = c_table_cols#add Gobject.Data.string;;
 
-let update_model () =
+let generate_model () =
   let store = GTree.tree_store c_table_cols in
   let rec last = fun lst ->
     match lst with
@@ -35,7 +35,7 @@ let update_model () =
   store;;
 
 let set_model (table_view : GTree.view) =
-  let model = update_model () in
+  let model = generate_model () in
   let model = model#coerce in
   table_view#set_model (Some model);;
 
@@ -297,7 +297,7 @@ let () =
     ignore(d#misc#connect#draw ~callback:draw);
 
     (* constraint table *)
-    let model = update_model () in
+    let model = generate_model () in
     let table_view = GTree.view ~model ~packing:(pane#pack2 ~resize:false ~shrink:true) () in
 
     let col = GTree.view_column ~title:"Target" ()
