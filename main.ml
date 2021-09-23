@@ -19,6 +19,12 @@ let relative_id (id : int) =
                else find (i + 1) ns in
   find 0 sorted_nodes;;
 
+let rec last lst =
+  match lst with
+  | [] -> None
+  | [n] -> Some n
+  | _::ns -> last ns;;
+
 (* ==== ACTIONS ============================================================= *)
 
 (* When the UI requires that the user provides 
@@ -36,9 +42,12 @@ type input_group = {
     label : GMisc.label;
     entry : GEdit.entry };;
 
+let set_message (iput : input_group) (msg : string) =
+      iput.label#set_text msg;;
+
 let register_action (act : action) (iput : input_group) =
   pending_action := Some act;
-  iput.label#set_text act.instruction;
+  set_message iput act.instruction;
   iput.entry#set_text "";
   iput.entry#set_visible true;
   iput.entry#set_has_focus true;;
@@ -54,9 +63,8 @@ let on_entry_activated (iput : input_group) () =
      let label_str =
        if succ then act.instruction ^ " (" ^ str ^ ")"
        else act.instruction ^ " invalid input \"" ^ str ^ "\"" in
-     iput.label#set_text label_str;
+     set_message iput label_str;
      iput.entry#set_visible false;;
-     
 
 (* ==== CONSTRAINT TABLE ==================================================== *)
 
@@ -66,11 +74,6 @@ let description = c_table_cols#add Gobject.Data.string;;
 
 let generate_model () =
   let store = GTree.tree_store c_table_cols in
-  let rec last = fun lst ->
-    match lst with
-    | [] -> None
-    | [n] -> Some n
-    | _::ns -> last ns in
   let selected_node = last !selection in
   let cs = match selected_node with
     | None -> [] 
@@ -110,7 +113,7 @@ let relative_con (con : Core.Constraint.t) =
 let relative_cons (cons : Core.Constraint.t list) =
   List.map relative_con cons
 
-let ordered_constraints () =
+let ordered_relative_constraints () =
   let sorted_nodes = List.sort
                        (fun a b -> Int.compare a.id b.id)
                        !nodes in
@@ -129,7 +132,7 @@ let system_vector () =
   vect
 
 let solve () =
-  let cs = ordered_constraints () in
+  let cs = ordered_relative_constraints () in
   List.iteri (fun idx cs -> print_endline (Int.to_string idx ^ ":");
                             List.iter (fun con ->
                                 print_endline ("\t" ^ (Core.Constraint.to_string con)))
@@ -146,7 +149,7 @@ let solve () =
     !nodes;;
 
 let create_solution_updater (dim : int) =
-  let cs = ordered_constraints () in
+  let cs = ordered_relative_constraints () in
   let system = Core.Constraint.to_system cs in
   fun (target : float) -> 
   let init_guess = system_vector () in
@@ -157,6 +160,28 @@ let create_solution_updater (dim : int) =
                                Array.get soln (2 * rel_id + 1)))
     !nodes;;
 
+(* remove labels from all nodes *)
+let unlabel_all () =
+  List.iter (fun node -> node.g_obj#unset_label ()) !nodes;;
+
+(* label all of the nodes constrained with node n *)
+let label_constraints (n : node) =
+  List.iter (fun con ->
+      match Core.Constraint.target_opt con with
+      | Some id ->
+         let targ_node = node_n id in
+         targ_node.g_obj#set_label (Int.to_string id)
+      | None -> ()) n.constraints;;
+
+let label_primary_selection () =
+  unlabel_all ();
+  let primary_id = last !selection in
+  match primary_id with
+  | Some id ->
+     let primary = node_n id in
+     label_constraints primary;
+  | None -> ()
+
 let update_selection (id : int) (table_view : GTree.view) =
   let node = node_n id in
   if List.exists (fun i -> i = id) !selection
@@ -165,19 +190,18 @@ let update_selection (id : int) (table_view : GTree.view) =
         node.g_obj#set_selection Graphics.GraphicsObjects.None)
   else (print_endline ("selecting " ^ Int.to_string id);
         match !selection with
-        | [] -> 
+        | [] ->
            selection := id::!selection;
            node.g_obj#set_selection Graphics.GraphicsObjects.Primary;
         | _ ->
            selection := id::!selection;
            node.g_obj#set_selection Graphics.GraphicsObjects.Secondary);
+  label_primary_selection ();
   set_model table_view;;
 
 let deselect_all (table_view : GTree.view) =
   print_endline "deselecting all";
-  selection := [];
-  List.iter (fun node -> node.g_obj#set_selection Graphics.GraphicsObjects.None) !nodes;
-  set_model table_view;;
+  List.iter (fun id -> update_selection id table_view) !selection;;
 
 (* ==== MOUSE CONTROLS ====================================================== *)
 

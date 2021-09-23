@@ -45,10 +45,14 @@ class node () =
 object(_self)
   inherit selectable_obj ()
   val size = 10.
+  val mutable label = (None : string option)
   
   method private bounds () =
     let x, y = position in
     (x -. size /. 2., y -. size /. 2., size, size)
+
+  method set_label (s : string) = label <- Some s
+  method unset_label () = label <- None
   
   method private draw_selection (cr : Cairo.context) (mode : select_mode) =
     let size_div_2 = size /. 2. in
@@ -74,4 +78,15 @@ object(_self)
          Cairo.arc cr size_div_2 size_div_2 ~r:size_div_2 ~a1:0. ~a2:(3.1415 *. 2.);
          Cairo.fill cr;
        end);
+    (match label with
+     | Some s -> begin
+         Cairo.set_source_rgb cr 0.0 0.0 0.0;
+         Cairo.set_font_size cr 10.;
+         let te = Cairo.text_extents cr s in
+         Cairo.move_to cr (0.5 -. te.width -. te.x_bearing)
+           (0.5 -. te.height -. te.y_bearing);
+         Cairo.show_text cr s;
+       end
+     | None -> ())
+  
 end;;
