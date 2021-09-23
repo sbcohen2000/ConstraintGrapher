@@ -98,12 +98,25 @@ let draw cr =
       node.g_obj#render cr) !nodes;
   true;;
 
+let relative_con (con : Core.Constraint.t) =
+  match con with
+  | Core.Constraint.Colinear (targ, dir) ->
+      Core.Constraint.Colinear (relative_id targ, dir)
+  | Core.Constraint.Point (x, y) ->
+     Core.Constraint.Point (x, y)
+  | Core.Constraint.Radial (targ, f) ->
+     Core.Constraint.Radial (relative_id targ, f)
+
+let relative_cons (cons : Core.Constraint.t list) =
+  List.map relative_con cons
+
 let ordered_constraints () =
   let sorted_nodes = List.sort
                        (fun a b -> Int.compare a.id b.id)
                        !nodes in
   List.fold_right (fun node cs ->
-      node.constraints::cs) sorted_nodes [];;
+      let r_cons = relative_cons node.constraints in
+      r_cons::cs) sorted_nodes [];;
 
 let system_vector () =
   let size = 2 * (List.length !nodes) in
@@ -258,7 +271,7 @@ let add_constraints_to_selected (apply_con : int -> Core.Constraint.t) =
   | [] -> ()
   | [_] -> ()
   | n::ns ->
-     let con = apply_con (relative_id n) in
+     let con = apply_con n in
      nodes := List.map (fun node ->
                   (* if node in ns, add con to its list of constraints *)
                   let cs' =
@@ -269,14 +282,14 @@ let add_constraints_to_selected (apply_con : int -> Core.Constraint.t) =
 
 let on_delete_pressed invalidate _iput () =
   let delete_node = fun id ->
-    let rel_id = relative_id id in
     (* delete the node from the list of nodes *)
     nodes := List.filter (fun node -> not (node.id = id)) !nodes;
+    
     (* delete every constraint that references the deleted node *)
     nodes := List.map (fun node ->
                  let cs' = List.filter (fun con ->
                                match Core.Constraint.target_opt con with
-                               | Some targ -> not (targ = rel_id)
+                               | Some targ -> not (targ = id)
                                | None -> true) node.constraints in
                  { node with constraints = cs' }) !nodes; in
   List.iter delete_node !selection;
