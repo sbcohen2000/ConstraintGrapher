@@ -9,6 +9,45 @@ module Solver = Core.System.MakeSystem(Core.System.DirectOptimizer);;
 let node_n (id : int) =
   List.find (fun node -> id = node.id) !nodes
 
+(* ==== ACTIONS ============================================================= *)
+
+(* When the UI requires that the user provides 
+ * some text input to complete a command (e.g. a 
+ * parameter input or user specified function), a pending
+ * action is created. When the user completes the action,
+ * the pending action is completed by evaluating the action
+ * with the string typed by the user. If the user cancels, 
+ * the action is removed and the action is never evaluated. *)
+type action = { f : string -> bool;
+                instruction : string };;
+let (pending_action : action option ref) = ref None;;
+
+type input_group = {
+    label : GMisc.label;
+    entry : GEdit.entry };;
+
+let register_action (act : action) (iput : input_group) =
+  pending_action := Some act;
+  iput.label#set_text act.instruction;
+  iput.entry#set_text "";
+  iput.entry#set_visible true;
+  iput.entry#set_has_focus true;;
+
+let on_entry_activated (iput : input_group) () =
+  let act_opt = !pending_action in
+  pending_action := None;
+  match act_opt with
+  | None -> ()
+  | Some act -> 
+     let str = iput.entry#text in
+     let succ = act.f str in
+     let label_str =
+       if succ then act.instruction ^ " (" ^ str ^ ")"
+       else act.instruction ^ " invalid input \"" ^ str ^ "\"" in
+     iput.label#set_text label_str;
+     iput.entry#set_visible false;;
+     
+
 (* ==== CONSTRAINT TABLE ==================================================== *)
 
 let c_table_cols = new GTree.column_list;;
@@ -176,7 +215,7 @@ let on_mouse_up invalidate table_view event =
 
 (* ==== TOOLBAR BUTTONS ===================================================== *)
 
-let on_add_pressed invalidate () =
+let on_add_pressed invalidate _entry () =
   let id = List.length !nodes in
   let g_obj = new Graphics.GraphicsObjects.node () in
   g_obj#set_position (Random.float 250., Random.float 200.);
@@ -203,22 +242,22 @@ let add_constraints_to_selected (apply_con : int -> Core.Constraint.t) =
                     else node.constraints in
                   { node with constraints = cs' }) !nodes
 
-let on_delete_pressed _invalidate () =
+let on_delete_pressed _invalidate _iput () =
   print_endline "not implemented";;
 
-let on_hor_con_pressed invalidate () =
+let on_hor_con_pressed invalidate _iput () =
   add_constraints_to_selected (fun n -> Core.Constraint.Colinear (n, Core.Constraint.Horizontal));
   solve ();
   invalidate ();
   print_endline "horizontal constraint pressed";;
 
-let on_vert_con_pressed invalidate () =
+let on_vert_con_pressed invalidate _iput () =
   add_constraints_to_selected (fun n -> Core.Constraint.Colinear (n, Core.Constraint.Vertical));
   solve ();
   invalidate ();
   print_endline "vertical constraint pressed";;
 
-let on_lock_con_pressed _invalidate () =
+let on_lock_con_pressed _invalidate _iput () =
   nodes := List.map (fun node ->
                let cs' = if List.exists (fun sel -> sel = node.id) !selection
                          then let x, y = node.g_obj#get_position in
@@ -227,10 +266,20 @@ let on_lock_con_pressed _invalidate () =
                          else node.constraints in
              { node with constraints = cs' }) !nodes
 
-let on_rad_con_pressed invalidate () =
-  add_constraints_to_selected (fun n -> Core.Constraint.Radial (n, 100.));
-  solve ();
-  invalidate ();
+let on_rad_con_pressed invalidate (iput : input_group) () =
+  let action = (fun str ->
+      let rad = Float.of_string_opt str in
+      match rad with
+      | Some r ->
+         begin
+           add_constraints_to_selected (fun n -> Core.Constraint.Radial (n, r));
+           solve ();
+           invalidate ();
+           true
+         end
+      | None -> false) in
+  register_action { f = action;
+                    instruction = "radius:" } iput;
   print_endline "radial constraint pressed";;
 
 let make_toolbar_button (image_name : string) (label : string) =
@@ -240,10 +289,12 @@ let make_toolbar_button (image_name : string) (label : string) =
   button#set_icon_widget image#coerce;
   button;;
 
-type toolbar_cb = (unit -> unit) -> unit -> unit;;
+type toolbar_cb = (unit -> unit) -> input_group -> unit -> unit;;
 type toolbar_item = Button of string * string * toolbar_cb
                   | Separator;;
-let add_toolbar_buttons (toolbar : GButton.toolbar) (invalidator : unit -> unit) =
+let add_toolbar_buttons (toolbar : GButton.toolbar)
+      (invalidator : unit -> unit)
+      (iput : input_group) =
   let buttons =
     [Button ("add node",              "add-icon.png",      on_add_pressed);
      Button ("delete node",           "trash-icon.png",    on_delete_pressed);
@@ -256,7 +307,7 @@ let add_toolbar_buttons (toolbar : GButton.toolbar) (invalidator : unit -> unit)
       match item with
       | Button (label, icon, callback) ->
          let button = make_toolbar_button icon label in
-         ignore (button#connect#clicked ~callback:(callback invalidator));
+         ignore (button#connect#clicked ~callback:(callback invalidator iput));
          toolbar#insert button
       | Separator ->
          let sep = GButton.separator_tool_item () in
@@ -291,9 +342,7 @@ let () =
     
     (* drawing area *)
     let d = GMisc.drawing_area ~packing:(pane#pack1 ~resize:true ~shrink:false)() in
-    
     let invalidate = d#misc#queue_draw in
-    add_toolbar_buttons tb invalidate;
     ignore(d#misc#connect#draw ~callback:draw);
 
     (* constraint table *)
@@ -312,10 +361,16 @@ let () =
     ignore(d#event#connect#button_press ~callback:(on_mouse_down invalidate));
     ignore(d#event#connect#button_release ~callback:(on_mouse_up invalidate table_view));
 
-    (* text entry area *)
+    (* text input group *)
+    let label = GMisc.label ~packing:vb#pack () in
+    label#set_halign `START;
     let entry = GEdit.entry ~packing:vb#pack () in
-    entry#set_has_focus false;
+    let (iput : input_group) = { label; entry } in
+
+    iput.entry#set_visible false;
+    ignore (iput.entry#connect#activate ~callback:(on_entry_activated iput));
     
+    add_toolbar_buttons tb invalidate iput;
     w#add_accel_group accel_group;
     w#show();
     GMain.main()
