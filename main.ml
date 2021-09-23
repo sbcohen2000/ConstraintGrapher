@@ -9,6 +9,16 @@ module Solver = Core.System.MakeSystem(Core.System.DirectOptimizer);;
 let node_n (id : int) =
   List.find (fun node -> id = node.id) !nodes
 
+exception BadId of int
+let relative_id (id : int) =
+  let sorted_nodes = List.sort (fun a b -> Int.compare a.id b.id) !nodes in
+  let rec find = fun i ns ->
+    match ns with
+    | [] -> raise (BadId id)
+    | n::ns -> if n.id = id then i
+               else find (i + 1) ns in
+  find 0 sorted_nodes;;
+
 (* ==== ACTIONS ============================================================= *)
 
 (* When the UI requires that the user provides 
@@ -88,21 +98,22 @@ let draw cr =
       node.g_obj#render cr) !nodes;
   true;;
 
-let system_vector () =
-  let size = 2 * (List.length !nodes) in
-  let vect = Array.create_float size in
-  List.iter (fun node ->
-      let x, y = node.g_obj#get_position in
-      Array.set vect (node.id * 2) x;
-      Array.set vect (node.id * 2 + 1) y) !nodes;
-  vect
-
 let ordered_constraints () =
   let sorted_nodes = List.sort
                        (fun a b -> Int.compare a.id b.id)
                        !nodes in
   List.fold_right (fun node cs ->
-      node.constraints::cs) sorted_nodes []
+      node.constraints::cs) sorted_nodes [];;
+
+let system_vector () =
+  let size = 2 * (List.length !nodes) in
+  let vect = Array.create_float size in
+  List.iter (fun node ->
+      let x, y = node.g_obj#get_position in
+      let rel_id = relative_id node.id in
+      Array.set vect (rel_id * 2) x;
+      Array.set vect (rel_id * 2 + 1) y) !nodes;
+  vect
 
 let solve () =
   let cs = ordered_constraints () in
@@ -116,8 +127,9 @@ let solve () =
   let init_guess = system_vector () in
   let soln = Solver.solve system init_guess in
   List.iter (fun node ->
-               node.g_obj#set_position (Array.get soln (2 * node.id),
-                                        Array.get soln (2 * node.id + 1)))
+      let rel_id = relative_id node.id in
+      node.g_obj#set_position (Array.get soln (2 * rel_id),
+                               Array.get soln (2 * rel_id + 1)))
     !nodes;;
 
 let create_solution_updater (dim : int) =
@@ -127,8 +139,9 @@ let create_solution_updater (dim : int) =
   let init_guess = system_vector () in
   let soln = Solver.vary_solution system init_guess dim target in
   List.iter (fun node ->
-      node.g_obj#set_position (Array.get soln (2 * node.id),
-                               Array.get soln (2 * node.id + 1)))
+      let rel_id = relative_id node.id in
+      node.g_obj#set_position (Array.get soln (2 * rel_id),
+                               Array.get soln (2 * rel_id + 1)))
     !nodes;;
 
 let update_selection (id : int) (table_view : GTree.view) =
@@ -155,9 +168,16 @@ let deselect_all (table_view : GTree.view) =
 
 (* ==== MOUSE CONTROLS ====================================================== *)
 
+(* returns the node id and the ordered id
+ * of the clicked node *)
 let node_underneath (x, y : float * float) =
-  List.find_opt (fun node ->
-                    node.g_obj#is_inside (x, y)) !nodes
+  let sorted_nodes = List.sort (fun a b -> Int.compare a.id b.id) !nodes in
+  let rec find = fun i ns ->
+    match ns with
+    | [] -> None
+    | n::ns -> if n.g_obj#is_inside (x, y) then Some (n.id, i)
+               else find (i + 1) ns in
+  find 0 sorted_nodes;;
 
 type updaters = { x_updater : float -> unit;
                   y_updater : float -> unit }
@@ -182,9 +202,9 @@ let on_mouse_down _invalidate event =
   let x, y = GdkEvent.Button.x event, GdkEvent.Button.y event in
   let clicked = node_underneath (x, y) in
   (match clicked with
-   | Some node ->
-      let x_dim = node.id * 2 in
-      let y_dim = node.id * 2 + 1 in
+   | Some (_, ordered_id) ->
+      let x_dim = ordered_id * 2 in
+      let y_dim = ordered_id * 2 + 1 in
       print_endline ("starting to drag with x_dim: " ^ Int.to_string x_dim ^ ", y_dim: " ^ Int.to_string y_dim);
       let (upd : updaters) = {
           x_updater = create_solution_updater x_dim;
@@ -199,14 +219,14 @@ let on_mouse_up invalidate table_view event =
   (* check if we clicked any nodes *)
   let clicked = node_underneath (x, y) in
   (match clicked, !current_drag with
-   | (Some node, Valid (sx, sy, _)) ->
+   | (Some (id, _), Valid (sx, sy, _)) ->
       let d = Graphics.Geometry.Point.distance (x, y) (sx, sy) in
       (* if the user dragged for fewer than 2 units, treat it as a click *)
       if d < 2. then
-        update_selection node.id table_view
+        update_selection id table_view
       else ()
-   | (Some node, _) ->
-      update_selection node.id table_view
+   | (Some (id, _), _) ->
+      update_selection id table_view
    | (None, Valid _) -> ()
    | (None, _) -> deselect_all table_view);
   current_drag := Invalid;
@@ -215,13 +235,18 @@ let on_mouse_up invalidate table_view event =
 
 (* ==== TOOLBAR BUTTONS ===================================================== *)
 
+let new_id () =
+  let max = ref 0 in
+  List.iter (fun node ->
+      if node.id > !max then max := node.id) !nodes;
+  !max + 1;;
+
 let on_add_pressed invalidate _entry () =
-  let id = List.length !nodes in
   let g_obj = new Graphics.GraphicsObjects.node () in
   g_obj#set_position (Random.float 250., Random.float 200.);
   let new_node = {
       constraints = [];
-      g_obj; id; } in
+      g_obj; id = new_id (); } in
   nodes := new_node::!nodes;
   invalidate ();
   print_endline "added node";;
@@ -233,7 +258,7 @@ let add_constraints_to_selected (apply_con : int -> Core.Constraint.t) =
   | [] -> ()
   | [_] -> ()
   | n::ns ->
-     let con = apply_con n in
+     let con = apply_con (relative_id n) in
      nodes := List.map (fun node ->
                   (* if node in ns, add con to its list of constraints *)
                   let cs' =
@@ -242,8 +267,21 @@ let add_constraints_to_selected (apply_con : int -> Core.Constraint.t) =
                     else node.constraints in
                   { node with constraints = cs' }) !nodes
 
-let on_delete_pressed _invalidate _iput () =
-  print_endline "not implemented";;
+let on_delete_pressed invalidate _iput () =
+  let delete_node = fun id ->
+    let rel_id = relative_id id in
+    (* delete the node from the list of nodes *)
+    nodes := List.filter (fun node -> not (node.id = id)) !nodes;
+    (* delete every constraint that references the deleted node *)
+    nodes := List.map (fun node ->
+                 let cs' = List.filter (fun con ->
+                               match Core.Constraint.target_opt con with
+                               | Some targ -> not (targ = rel_id)
+                               | None -> true) node.constraints in
+                 { node with constraints = cs' }) !nodes; in
+  List.iter delete_node !selection;
+  selection := [];
+  invalidate ();;
 
 let on_hor_con_pressed invalidate _iput () =
   add_constraints_to_selected (fun n -> Core.Constraint.Colinear (n, Core.Constraint.Horizontal));
