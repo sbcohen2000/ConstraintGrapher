@@ -43,7 +43,7 @@ type input_group = {
     entry : GEdit.entry };;
 
 let set_message (iput : input_group) (msg : string) =
-      iput.label#set_text msg;;
+  iput.label#set_text msg;;
 
 let register_action (act : action) (iput : input_group) =
   pending_action := Some act;
@@ -57,14 +57,13 @@ let on_entry_activated (iput : input_group) () =
   pending_action := None;
   match act_opt with
   | None -> ()
-  | Some act -> 
+  | Some act ->
+     iput.entry#set_visible false;
      let str = iput.entry#text in
      let succ = act.f str in
-     let label_str =
-       if succ then act.instruction ^ " (" ^ str ^ ")"
-       else act.instruction ^ " invalid input \"" ^ str ^ "\"" in
-     set_message iput label_str;
-     iput.entry#set_visible false;;
+     if succ then ()
+     else set_message iput
+            (act.instruction ^ " invalid input \"" ^ str ^ "\"");;
 
 (* ==== CONSTRAINT TABLE ==================================================== *)
 
@@ -93,22 +92,33 @@ let set_model (table_view : GTree.view) =
 
 (* ==== GEOMETRIC SOLVING =================================================== *)
 
-let draw cr =
+let draw d cr =
   (* white background *)
   Cairo.set_source_rgb cr 1. 1. 1.;
   Cairo.paint cr;
+  let w = float d#misc#allocation.Gtk.width in
+  let h = float d#misc#allocation.Gtk.height in
+  let primary = last !selection in
+  let grid_offset = match primary with
+    | Some id ->
+       let node = node_n id in
+       node.g_obj#get_position 
+    | None -> Graphics.Geometry.Point.zero in
+  Graphics.Grid.draw cr w h grid_offset;
   List.iter (fun node ->
       node.g_obj#render cr) !nodes;
   true;;
 
 let relative_con (con : Core.Constraint.t) =
   match con with
-  | Core.Constraint.Colinear (targ, dir) ->
-      Core.Constraint.Colinear (relative_id targ, dir)
+  | Core.Constraint.Axis (targ, dir) ->
+     Core.Constraint.Axis (relative_id targ, dir)
   | Core.Constraint.Point (x, y) ->
      Core.Constraint.Point (x, y)
   | Core.Constraint.Radial (targ, f) ->
      Core.Constraint.Radial (relative_id targ, f)
+  | Core.Constraint.Offset (targ, x, y) ->
+     Core.Constraint.Offset (relative_id targ, x, y)
 
 let relative_cons (cons : Core.Constraint.t list) =
   List.map relative_con cons
@@ -182,26 +192,33 @@ let label_primary_selection () =
      label_constraints primary;
   | None -> ()
 
-let update_selection (id : int) (table_view : GTree.view) =
+let rec update_selection (id : int) (table_view : GTree.view) (shift : bool) =
   let node = node_n id in
-  if List.exists (fun i -> i = id) !selection
-  then (print_endline ("deselecting " ^ Int.to_string id);
-        selection := List.filter (fun i -> not (i = id)) !selection;
-        node.g_obj#set_selection Graphics.GraphicsObjects.None)
-  else (print_endline ("selecting " ^ Int.to_string id);
-        match !selection with
-        | [] ->
-           selection := id::!selection;
-           node.g_obj#set_selection Graphics.GraphicsObjects.Primary;
-        | _ ->
-           selection := id::!selection;
-           node.g_obj#set_selection Graphics.GraphicsObjects.Secondary);
+  if shift then
+    begin
+      if List.exists (fun i -> i = id) !selection
+      then (selection := List.filter (fun i -> not (i = id)) !selection;
+            node.g_obj#set_selection Graphics.GraphicsObjects.None)
+      else (match !selection with
+            | [] ->
+               selection := [id];
+               node.g_obj#set_selection Graphics.GraphicsObjects.Primary;
+            | _ ->
+               selection := id::!selection;
+               node.g_obj#set_selection Graphics.GraphicsObjects.Secondary);
+    end
+  else
+    begin
+      deselect_all table_view;
+      selection := [id];
+      node.g_obj#set_selection Graphics.GraphicsObjects.Primary;
+    end;
   label_primary_selection ();
-  set_model table_view;;
+  set_model table_view;
 
-let deselect_all (table_view : GTree.view) =
+and deselect_all (table_view : GTree.view) =
   print_endline "deselecting all";
-  List.iter (fun id -> update_selection id table_view) !selection;;
+  List.iter (fun id -> update_selection id table_view true) !selection;;
 
 (* ==== MOUSE CONTROLS ====================================================== *)
 
@@ -252,6 +269,7 @@ let on_mouse_down _invalidate event =
 
 let on_mouse_up invalidate table_view event =
   let _button = GdkEvent.Button.button event in
+  let shift_on = (GdkEvent.Button.state event) land 1 = 1 in
   let x, y = GdkEvent.Button.x event, GdkEvent.Button.y event in
   (* check if we clicked any nodes *)
   let clicked = node_underneath (x, y) in
@@ -260,10 +278,10 @@ let on_mouse_up invalidate table_view event =
       let d = Graphics.Geometry.Point.distance (x, y) (sx, sy) in
       (* if the user dragged for fewer than 2 units, treat it as a click *)
       if d < 2. then
-        update_selection id table_view
+        update_selection id table_view shift_on
       else ()
    | (Some (id, _), _) ->
-      update_selection id table_view
+      update_selection id table_view shift_on
    | (None, Valid _) -> ()
    | (None, _) -> deselect_all table_view);
   current_drag := Invalid;
@@ -288,8 +306,20 @@ let on_add_pressed invalidate _entry () =
   invalidate ();
   print_endline "added node";;
 
-(* apply_con is a function that accepts the target node and returns
- * a constraint applying that node as the target *)
+(* add a constraint between just two nodes *)
+let add_binary_constraint (apply_con : int -> Core.Constraint.t) =
+  match !selection with
+  | [a; b] ->
+     let con = apply_con b in
+     nodes := List.map (fun node ->
+                  let cs' = if node.id = a
+                            then con::node.constraints
+                            else node.constraints in
+                  { node with constraints = cs' }) !nodes
+  | _ -> ();;
+
+(* add a constraint between the primary node and 
+ * every selected node *)
 let add_constraints_to_selected (apply_con : int -> Core.Constraint.t) =
   match !selection with
   | [] -> ()
@@ -318,19 +348,18 @@ let on_delete_pressed invalidate _iput () =
                  { node with constraints = cs' }) !nodes; in
   List.iter delete_node !selection;
   selection := [];
+  label_primary_selection ();
   invalidate ();;
 
 let on_hor_con_pressed invalidate _iput () =
-  add_constraints_to_selected (fun n -> Core.Constraint.Colinear (n, Core.Constraint.Horizontal));
+  add_constraints_to_selected (fun n -> Core.Constraint.Axis (n, Core.Constraint.Horizontal));
   solve ();
-  invalidate ();
-  print_endline "horizontal constraint pressed";;
+  invalidate ();;
 
 let on_vert_con_pressed invalidate _iput () =
-  add_constraints_to_selected (fun n -> Core.Constraint.Colinear (n, Core.Constraint.Vertical));
+  add_constraints_to_selected (fun n -> Core.Constraint.Axis (n, Core.Constraint.Vertical));
   solve ();
-  invalidate ();
-  print_endline "vertical constraint pressed";;
+  invalidate ();;
 
 let on_lock_con_pressed _invalidate _iput () =
   nodes := List.map (fun node ->
@@ -339,7 +368,7 @@ let on_lock_con_pressed _invalidate _iput () =
                               let con = Core.Constraint.Point (x, y) in
                               con::node.constraints
                          else node.constraints in
-             { node with constraints = cs' }) !nodes
+               { node with constraints = cs' }) !nodes
 
 let on_rad_con_pressed invalidate (iput : input_group) () =
   let action = (fun str ->
@@ -353,9 +382,42 @@ let on_rad_con_pressed invalidate (iput : input_group) () =
            true
          end
       | None -> false) in
-  register_action { f = action;
-                    instruction = "radius:" } iput;
-  print_endline "radial constraint pressed";;
+  match !selection with
+  | [] -> () (* if there is no selection, don't register an action *)
+  | _ -> 
+     register_action { f = action;
+                       instruction = "radius:" } iput;;
+
+let on_offset_con_pressed invalidate (iput : input_group) () =
+  let the_x = ref None in
+  let get_vert_offset = (fun str ->
+      let f = Float.of_string_opt str in
+      match (!the_x, f) with
+      | (Some x, Some y) ->
+         add_binary_constraint (fun n -> Core.Constraint.Offset (n, x, -.y));
+         solve ();
+         invalidate ();
+         true
+      | _ -> false) in
+  let get_hor_offset = (fun str ->
+      let f = Float.of_string_opt str in
+      match f with
+      | Some x ->
+         begin
+           the_x := Some x;
+           register_action { f = get_vert_offset;
+                             instruction = "vertical offset:" } iput;
+           true
+         end
+      | None -> false) in
+  match !selection with
+  | [] -> ()
+  | _ ->
+     register_action { f = get_hor_offset;
+                       instruction = "horizontal offset:" } iput;;
+
+let on_ink_pressed _invalidate (_iput : input_group) () =
+  print_endline "ink pressed";;
 
 let make_toolbar_button (image_name : string) (label : string) =
   let path = "/home/sam/Documents/ConstraintGrapher/resources/" ^ image_name in
@@ -371,13 +433,16 @@ let add_toolbar_buttons (toolbar : GButton.toolbar)
       (invalidator : unit -> unit)
       (iput : input_group) =
   let buttons =
-    [Button ("add node",              "add-icon.png",      on_add_pressed);
-     Button ("delete node",           "trash-icon.png",    on_delete_pressed);
+    [Button ("add node",    "add-icon.png",   on_add_pressed);
+     Button ("delete node", "trash-icon.png", on_delete_pressed);
      Separator;
-     Button ("horizontal constraint", "hor-con-icon.png",  on_hor_con_pressed);
-     Button ("vertical constraint",   "vert-con-icon.png", on_vert_con_pressed);
-     Button ("lock constraint",       "lock-con-icon.png", on_lock_con_pressed);
-     Button ("radius constraint",     "rad-con-icon.png",  on_rad_con_pressed)] in
+     Button ("horizontal constraint", "hor-con-icon.png",    on_hor_con_pressed);
+     Button ("vertical constraint",   "vert-con-icon.png",   on_vert_con_pressed);
+     Button ("lock constraint",       "lock-con-icon.png",   on_lock_con_pressed);
+     Button ("radius constraint",     "rad-con-icon.png",    on_rad_con_pressed);
+     Button ("offset constraint",     "offset-con-icon.png", on_offset_con_pressed);
+     Separator;
+     Button ("draw line", "ink-icon.png", on_ink_pressed)] in
   List.iter (fun item ->
       match item with
       | Button (label, icon, callback) ->
@@ -393,7 +458,7 @@ let add_toolbar_buttons (toolbar : GButton.toolbar)
 
 let () =
   ignore (GMain.init ()) in
-    let w = GWindow.window ~title:"GraphKit" ~width:500 ~height:400 () in
+    let w = GWindow.window ~title:"GraphKit" ~width:700 ~height:600 () in
     ignore(w#connect#destroy ~callback:GMain.quit);
     
     let vb = GPack.vbox ~packing:w#add () in
@@ -418,7 +483,7 @@ let () =
     (* drawing area *)
     let d = GMisc.drawing_area ~packing:(pane#pack1 ~resize:true ~shrink:false)() in
     let invalidate = d#misc#queue_draw in
-    ignore(d#misc#connect#draw ~callback:draw);
+    ignore(d#misc#connect#draw ~callback:(draw d));
 
     (* constraint table *)
     let model = generate_model () in
@@ -444,7 +509,7 @@ let () =
 
     iput.entry#set_visible false;
     ignore (iput.entry#connect#activate ~callback:(on_entry_activated iput));
-    
+
     add_toolbar_buttons tb invalidate iput;
     w#add_accel_group accel_group;
     w#show();

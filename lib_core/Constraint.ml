@@ -2,9 +2,10 @@
 type axis = Horizontal
           | Vertical
 
-type t = Point    of float * float (* x, y *)
-       | Colinear of int * axis    (* target, constrained axis *)
-       | Radial   of int * float   (* target, distance *)
+type t = Point  of float * float (* x, y *)
+       | Axis   of int * axis    (* target, constrained axis *)
+       | Radial of int * float   (* target, distance *)
+       | Offset of int * float * float (* target, x, y *)
 
 (* returns the variable corresponding to 
  * the node with index 'idx' *)
@@ -14,8 +15,9 @@ let node_y (idx : int) = idx * 2 + 1
 let target_opt (con : t) =
   match con with
   | Point _ -> None
-  | Colinear (targ, _) -> Some targ
+  | Axis (targ, _) -> Some targ
   | Radial (targ, _) -> Some targ
+  | Offset (targ, _, _) -> Some targ
 
 let target_string_opt (con : t) =
   match target_opt con with
@@ -24,21 +26,25 @@ let target_string_opt (con : t) =
 
 let description (con : t) =
   match con with
-  | Point (x, y) -> Printf.sprintf "Locked to (%0.2f, %0.2f)" x y
-  | Colinear (_, Horizontal) -> "Horizontal lock"
-  | Colinear (_, Vertical) -> "Vertical lock"
-  | Radial (_, r) -> Printf.sprintf "Distance of %0.2f" r
+  | Point (x, y) -> Printf.sprintf "Locked to (%0.1f, %0.1f)" x y
+  | Axis (_, Horizontal) -> "Horizontal lock"
+  | Axis (_, Vertical) -> "Vertical lock"
+  | Radial (_, r) -> Printf.sprintf "Distance of %0.1f" r
+  | Offset (_, x, y) -> Printf.sprintf "Offset (%0.1f, %0.1f)" x y
 
 let to_string (con : t) =
   match con with
   | Point (x, y) ->
      "Point (" ^ Float.to_string x ^ ", " ^ Float.to_string y ^ ")"
-  | Colinear (targ, Horizontal) ->
-     "Colinear @ " ^ Int.to_string targ ^ " (Horizontal)"
-  | Colinear (targ, Vertical) ->
-     "Colinear @ " ^ Int.to_string targ ^ " (Vertical)"
+  | Axis (targ, Horizontal) ->
+     "Axis @ " ^ Int.to_string targ ^ " (Horizontal)"
+  | Axis (targ, Vertical) ->
+     "Axis @ " ^ Int.to_string targ ^ " (Vertical)"
   | Radial (targ, r) ->
      "Radial @ " ^ Int.to_string targ ^ " r: " ^ Float.to_string r
+  | Offset (targ, x, y) ->
+     "Offset @ " ^ Int.to_string targ ^ "("
+     ^ Float.to_string x ^ ", " ^ Float.to_string y ^ ")"
 
 let con_to_system (this_node : int) (con : t) =
   let open Expression in
@@ -46,10 +52,10 @@ let con_to_system (this_node : int) (con : t) =
   | Point (x, y) -> (* this_node's x = x, this_node's y = y *)
      [Fun ("-", [X (node_x this_node, Undef); Const x]);
       Fun ("-", [X (node_y this_node, Undef); Const y])]
-  | Colinear (target_node, Horizontal) -> (* this_nodes's y = target_node's y *)
+  | Axis (target_node, Horizontal) -> (* this_nodes's y = target_node's y *)
      [Fun ("-", [X (node_y this_node, Undef);
                             X (node_y target_node, Undef)])]
-  | Colinear (target_node, Vertical) -> (* this_node's x = target_node's x *)
+  | Axis (target_node, Vertical) -> (* this_node's x = target_node's x *)
      [Fun ("-", [X (node_x this_node, Undef);
                             X (node_x target_node, Undef)])]
   | Radial (target_node, r) -> (* this_node is distance r from target node *)
@@ -60,6 +66,11 @@ let con_to_system (this_node : int) (con : t) =
      [Fun ("-", [Fun ("sqrt", [Fun ("+", [Fun ("sqr", [Fun ("-", [target_x; this_x])]);
                                           Fun ("sqr", [Fun ("-", [target_y; this_y])])])]);
                  Const r])]
+  | Offset (target_node, x, y) ->
+     [Fun ("-", [X (node_x this_node, Undef);
+                 Fun ("+", [X(node_x target_node, Undef); Const x])]);
+      Fun ("-", [X (node_y this_node, Undef);
+                 Fun ("+", [X(node_y target_node, Undef); Const y])])]
 
 let to_system (constraints : t list list) =
   (* The solution vector contains 2 * |nodes| elements,
