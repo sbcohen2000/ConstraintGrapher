@@ -6,23 +6,25 @@ type t = Point  of float * float (* x, y *)
        | Axis   of int * axis    (* target, constrained axis *)
        | Radial of int * float   (* target, distance *)
        | Offset of int * float * float (* target, x, y *)
+       | Colinear of int * int (* target a, target b *)
 
 (* returns the variable corresponding to 
  * the node with index 'idx' *)
 let node_x (idx : int) = idx * 2
 let node_y (idx : int) = idx * 2 + 1
 
-let target_opt (con : t) =
+let targets (con : t) =
   match con with
-  | Point _ -> None
-  | Axis (targ, _) -> Some targ
-  | Radial (targ, _) -> Some targ
-  | Offset (targ, _, _) -> Some targ
+  | Point _ -> []
+  | Axis (targ, _) -> [targ]
+  | Radial (targ, _) -> [targ]
+  | Offset (targ, _, _) -> [targ]
+  | Colinear (targ_a, targ_b) -> [targ_a; targ_b]
 
 let target_string_opt (con : t) =
-  match target_opt con with
-  | None -> None
-  | Some i -> Some (Int.to_string i)
+  match targets con with
+  | [] -> None
+  | ns -> Some (String.concat ", " (List.map Int.to_string ns))
 
 let description (con : t) =
   match con with
@@ -31,6 +33,7 @@ let description (con : t) =
   | Axis (_, Vertical) -> "Vertical lock"
   | Radial (_, r) -> Printf.sprintf "Distance of %0.1f" r
   | Offset (_, x, y) -> Printf.sprintf "Offset (%0.1f, %0.1f)" x y
+  | Colinear _ -> "Colinear"
 
 let to_string (con : t) =
   match con with
@@ -45,6 +48,9 @@ let to_string (con : t) =
   | Offset (targ, x, y) ->
      "Offset @ " ^ Int.to_string targ ^ "("
      ^ Float.to_string x ^ ", " ^ Float.to_string y ^ ")"
+  | Colinear (targ_a, targ_b) ->
+     "Colinear @ " ^ Int.to_string targ_a ^ ", "
+     ^ Int.to_string targ_b
 
 let con_to_system (this_node : int) (con : t) =
   let open Expression in
@@ -71,6 +77,15 @@ let con_to_system (this_node : int) (con : t) =
                  Fun ("+", [X(node_x target_node, Undef); Const x])]);
       Fun ("-", [X (node_y this_node, Undef);
                  Fun ("+", [X(node_y target_node, Undef); Const y])])]
+  | Colinear (targ_a, targ_b) ->
+     let x = X (node_x this_node, Undef) in
+     let y = X (node_y this_node, Undef) in
+     let x_1 = X (node_x targ_a, Undef) in
+     let y_1 = X (node_y targ_a, Undef) in
+     let x_2 = X (node_x targ_b, Undef) in
+     let y_2 = X (node_y targ_b, Undef) in
+     let m = Fun ("/", [Fun ("-", [y_1; y_2]); Fun ("-", [x_1; x_2])]) in
+     [Fun ("+", [Fun ("-", [Fun ("*", [m; Fun ("-", [x; x_1])]); y]); y_1])]
 
 let to_system (constraints : t list list) =
   (* The solution vector contains 2 * |nodes| elements,

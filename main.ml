@@ -154,6 +154,9 @@ let relative_con (con : Core.Constraint.t) =
      Core.Constraint.Radial (relative_id targ, f)
   | Core.Constraint.Offset (targ, x, y) ->
      Core.Constraint.Offset (relative_id targ, x, y)
+  | Core.Constraint.Colinear (targ_a, targ_b) ->
+     Core.Constraint.Colinear (relative_id targ_a,
+                               relative_id targ_b)
 
 let relative_cons (cons : Core.Constraint.t list) =
   List.map relative_con cons
@@ -212,11 +215,11 @@ let unlabel_all () =
 (* label all of the nodes constrained with node n *)
 let label_constraints (n : node) =
   List.iter (fun con ->
-      match Core.Constraint.target_opt con with
-      | Some id ->
+      List.iter (fun id -> 
          let targ_node = node_n id in
-         targ_node.g_obj#set_label (Int.to_string id)
-      | None -> ()) n.constraints;;
+         targ_node.g_obj#set_label (Int.to_string id))
+        (Core.Constraint.targets con))
+    n.constraints;;
 
 let label_primary_selection () =
   unlabel_all ();
@@ -377,9 +380,9 @@ let on_delete_pressed invalidate _iput () =
     (* delete every constraint that references the deleted node *)
     nodes := List.map (fun node ->
                  let cs' = List.filter (fun con ->
-                               match Core.Constraint.target_opt con with
-                               | Some targ -> not (targ = id)
-                               | None -> true) node.constraints in
+                               let targs = Core.Constraint.targets con in
+                               not (List.exists (fun targ -> targ = id) targs))
+                             node.constraints in
                  { node with constraints = cs' }) !nodes; in
   List.iter delete_node !selection;
   selection := [];
@@ -451,6 +454,20 @@ let on_offset_con_pressed invalidate (iput : input_group) () =
      register_action { f = get_hor_offset;
                        instruction = "horizontal offset:" } iput;;
 
+let on_colinear_con_pressed invalidate (iput : input_group) () =
+  match !selection with
+  | [a; b; prim] ->
+     let con = Core.Constraint.Colinear (a, b) in
+     nodes := List.map (fun node ->
+                  let cs' = if node.id = prim
+                            then con::node.constraints
+                            else node.constraints in
+                  { node with constraints = cs' }) !nodes;
+     solve ();
+     invalidate ();
+  | _ ->
+     set_message iput "Colinear constriant requires three nodes";;
+
 let on_ink_pressed _invalidate (_iput : input_group) () =
   print_endline "ink pressed";;
 
@@ -477,7 +494,7 @@ let add_toolbar_buttons (toolbar : GButton.toolbar)
      Button ("radius constraint",     "rad-con-icon.png",    on_rad_con_pressed);
      Button ("offset constraint",     "offset-con-icon.png", on_offset_con_pressed);
      Separator;
-     Button ("draw line", "ink-icon.png", on_ink_pressed)] in
+     Button ("draw line", "ink-icon.png", on_colinear_con_pressed)] in
   List.iter (fun item ->
       match item with
       | Button (label, icon, callback) ->

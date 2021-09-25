@@ -120,9 +120,9 @@ module DirectOptimizer =
     let test_point_generator (n_dims : int) =
       let vect = Array.create_float ((2 * n_dims + 1) * n_dims) in
       fun (x : vect) (alpha : float) ->
-      let r = Random.float 0.1 -. 0.05 in
       Array.blit x 0 vect 0 n_dims;
       for i = 0 to n_dims - 1 do
+        let r = Random.float 0.1 -. 0.05 in
         begin
           Array.blit x 0 vect ((2 * i + 1) * n_dims) n_dims;
           Array.blit x 0 vect ((2 * i + 2) * n_dims) n_dims;
