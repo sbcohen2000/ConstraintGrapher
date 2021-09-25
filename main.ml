@@ -90,6 +90,41 @@ let set_model (table_view : GTree.view) =
   let model = model#coerce in
   table_view#set_model (Some model);;
 
+(* ==== TABLE CONTROLS ====================================================== *)
+
+let rec remove_nth (lst : 'a list) (n : int) =
+  match lst with
+  | [] -> []
+  | o::os -> if n = 0 then os
+             else o::(remove_nth os (n - 1))
+
+(* deletes constraint n from the currently selected node.
+ * If no node is selected, the function does nothing *)
+let delete_con (n : int) =
+  let node_id = last !selection in
+  (match node_id with
+   | Some id ->
+      nodes := List.map (fun node ->
+                   let cs' = 
+                     if id = node.id then
+                       remove_nth node.constraints n
+                     else node.constraints in
+                   { node with constraints = cs' }) !nodes
+   | None -> ());;
+
+let on_key_pressed_in_table (tb : GTree.view) (ev : GdkEvent.Key.t) =
+  match GdkEvent.Key.keyval ev with
+  | 65288 ->
+     (match tb#get_cursor () with
+      | (Some path, _) ->
+         let indices = GtkTree.TreePath.get_indices path in
+         let con_to_delete = Array.get indices 0 in
+         delete_con con_to_delete;
+         set_model tb;
+      | _ -> ());
+     true;
+  | _ -> false;;
+
 (* ==== GEOMETRIC SOLVING =================================================== *)
 
 let draw d cr =
@@ -488,6 +523,8 @@ let () =
     (* constraint table *)
     let model = generate_model () in
     let table_view = GTree.view ~model ~packing:(pane#pack2 ~resize:false ~shrink:true) () in
+    table_view#set_enable_search false;
+    ignore (table_view#event#connect#key_release ~callback:(on_key_pressed_in_table table_view));
 
     let col = GTree.view_column ~title:"Target" ()
                 ~renderer:(GTree.cell_renderer_text[], ["text", target]) in

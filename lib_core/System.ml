@@ -141,20 +141,6 @@ module DirectOptimizer =
       let n_points = n_dims * 2 + 1 in
       Array.init n_points (fun n -> f  (point_n points n_dims n))
 
-    (* generate a list of points to evalaute the the objective
-     * function at. Points are centered at x and the "star" of points
-     * has size alpha. *)
-    (* let get_test_points (x : vect) (alpha : float) =
-     *   (\* small random term helps algorithm avoid loop conditons *\)
-     *   let r = Random.float 0.1 -. 0.05 in
-     *   let pairs = Array.mapi (fun i coord ->
-     *                   let x'0 = Array.copy x in
-     *                   let x'1 = Array.copy x in
-     *                   Array.set x'0 i (coord -. alpha +. r);
-     *                   Array.set x'1 i (coord +. alpha +. r);
-     *                   [| x'0; x'1 |]) x in 
-     *   Array.concat ([|x|]::(Array.to_list pairs)) *)
-
     (* returns the index of the smallest element in 'arr' *)
     let smallest (arr : float array) =
       let min = ref Float.infinity in
@@ -209,8 +195,8 @@ module DirectOptimizer =
       let coord = ref (Array.get x0 (Int.abs dim)) in
       let obj   = ref 0. in
       while Float.abs(target -. !coord) > 1.
-            && !obj < 0.2
-            && !iters < 100 do
+            && !obj < 1.
+            && !iters < 1000 do
         iters := !iters + 1;
         let directed_dim = if !coord < target then Fwd dim else Rwd dim in
         coord := Array.get !x dim;
