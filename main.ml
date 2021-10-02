@@ -468,8 +468,11 @@ let on_colinear_con_pressed invalidate (iput : input_group) () =
   | _ ->
      set_message iput "Colinear constriant requires three nodes";;
 
-let on_ink_pressed _invalidate (_iput : input_group) () =
-  print_endline "ink pressed";;
+let on_line_pressed _invalidate (_iput : input_group) () =
+  print_endline "line pressed";;
+
+let on_circle_pressed _invalidate (_iput : input_group) () =
+  print_endline "circle pressed";;
 
 let make_toolbar_button (image_name : string) (label : string) =
   let path = "/home/sam/Documents/ConstraintGrapher/resources/" ^ image_name in
@@ -488,13 +491,15 @@ let add_toolbar_buttons (toolbar : GButton.toolbar)
     [Button ("add node",    "add-icon.png",   on_add_pressed);
      Button ("delete node", "trash-icon.png", on_delete_pressed);
      Separator;
-     Button ("horizontal constraint", "hor-con-icon.png",    on_hor_con_pressed);
-     Button ("vertical constraint",   "vert-con-icon.png",   on_vert_con_pressed);
-     Button ("lock constraint",       "lock-con-icon.png",   on_lock_con_pressed);
-     Button ("radius constraint",     "rad-con-icon.png",    on_rad_con_pressed);
-     Button ("offset constraint",     "offset-con-icon.png", on_offset_con_pressed);
+     Button ("horizontal constraint", "hor-con-icon.png",      on_hor_con_pressed);
+     Button ("vertical constraint",   "vert-con-icon.png",     on_vert_con_pressed);
+     Button ("lock constraint",       "lock-con-icon.png",     on_lock_con_pressed);
+     Button ("radius constraint",     "rad-con-icon.png",      on_rad_con_pressed);
+     Button ("offset constraint",     "offset-con-icon.png",   on_offset_con_pressed);
+     Button ("colinear constraint",   "colinear-con-icon.png", on_colinear_con_pressed);
      Separator;
-     Button ("draw line", "ink-icon.png", on_colinear_con_pressed)] in
+     Button ("draw line", "line-icon.png", on_line_pressed);
+     Button ("draw circle", "circle-icon.png", on_circle_pressed)] in
   List.iter (fun item ->
       match item with
       | Button (label, icon, callback) ->

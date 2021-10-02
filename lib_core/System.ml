@@ -121,11 +121,14 @@ module DirectOptimizer =
       let vect = Array.create_float ((2 * n_dims + 1) * n_dims) in
       fun (x : vect) (alpha : float) ->
       Array.blit x 0 vect 0 n_dims;
+      (* each point in the star *)
       for i = 0 to n_dims - 1 do
         let r = Random.float 0.1 -. 0.05 in
         begin
+          (* place x vector into the ith point of the star *)
           Array.blit x 0 vect ((2 * i + 1) * n_dims) n_dims;
           Array.blit x 0 vect ((2 * i + 2) * n_dims) n_dims;
+          (* translate the ith component by alpha *)
           Array.set vect ((2 * i + 1) * n_dims + i) (Array.get x i -. alpha +. r);
           Array.set vect ((2 * i + 2) * n_dims + i) (Array.get x i +. alpha +. r);
         end
