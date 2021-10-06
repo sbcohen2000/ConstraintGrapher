@@ -1,4 +1,4 @@
 (executables
  (names main testAlgo)
- (libraries lablgtk3 graphics core app))
+ (libraries lablgtk3 graphics graph core app))
  

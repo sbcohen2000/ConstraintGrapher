@@ -2,88 +2,96 @@ Random.self_init ()
 module ISet = Set.Make(Int)
 
 module type Optimizer = sig
-  type syst = Expression.t Array.t
+  type syst = Expression.t Array.t Array.t
   type vect = float Array.t
 
   (* call solve with a custom parameter *)
   val vary_solution : syst -> vect -> int -> float -> vect
   val solve : syst -> vect -> vect
+  val objective : syst -> vect -> float
 end
 
 module MakeSystem(O : Optimizer) =
   struct
-    type syst = Expression.t Array.t (* the system of equations *)
-    type vect = float Array.t        (* vector of vars          *)
+    type syst = Expression.t Array.t Array.t (* the system of equations *)
+    type vect = float Array.t                (* vector of vars          *)
 
     (* give a set with the subscript of each x in the system *)
     let vars (a : syst) =
       Array.fold_left (
-          fun set expr -> ISet.union (Expression.vars expr) set)
+          fun set exprs -> ISet.union (Expression.vars (Array.get exprs 0)) set)
         ISet.empty a
 
     let n_vars (a : syst) =
       ISet.cardinal (vars a)
 
     let to_string (a : syst) =
-      String.concat "; " (Array.to_list (Array.map Expression.to_string a))
+      String.concat "; " (Array.to_list (Array.map Expression.to_string (Array.get a 0)))
 
     let vary_solution = O.vary_solution
     let solve = O.solve
+    let objective = O.objective
   end
 
 module GradientOptimizer =
   struct
-    type syst = Expression.t Array.t (* the system of equations *)
-    type vect = float Array.t        (* vector of vars          *)
+    type eqn = Expression.t Array.t
+    type syst = eqn Array.t    (* the system of equations *)
+    type vect = float Array.t  (* vector of vars          *)
+
+    (* the original function *)
+    let fx (a : Expression.t Array.t) = Array.get a 0
+
+    (* all original functions *)
+    let fs (a : syst) = Array.map fx a
+
+    let eval_expr (expr : Expression.t) (x : vect) =
+      Expression.eval (Expression.subst expr x)
 
     (* give a vector with the value of the system at x *)
     let eval (a : syst) (x : vect) =
-      Array.map (fun expr -> Expression.eval (Expression.subst expr x)) a
+      Array.map (fun expr -> eval_expr expr x) (fs a)
 
-    let objective (a : syst) (x : vect) =
-      let vals = Array.map (fun expr -> Expression.eval (Expression. subst expr x)) a in
-      Array.fold_left (fun obj x -> obj +. Float.abs x) 0.0 vals
+    (* give a vector of the derivative of every x_n 
+     * in the system *)
+    let eval_dfdn (a : syst) (n : int) (x : vect) =
+      Array.map (fun f ->
+          eval_expr (Array.get f (n + 1)) x) a
 
-    (* find the local gradient of the system at x *)
-    let grad (a : syst) (x : vect) =
-      let epsilon = 0.0001 in (* the amount to vary the second point from the first *)
-      let x' = Array.map (fun v ->
-                   let r = Random.float epsilon in
-                   v +. (r -. (epsilon /. 2.))) x in
-      let y0 = eval a x  in
-      let y1 = eval a x' in
-      Array.mapi (fun i a ->
-          let rise = (a -. Array.get y1 i) in
-          let run = (Array.get x i -. Array.get x' i) in
-          rise /. run) y0
+    let sum_vect (x : vect) =
+      Array.fold_left (fun sum x -> sum +. x) 0.0 x
+
+    let norm_vect (x : vect) =
+      Array.fold_left (fun sum x -> sum +. (x *. x)) 0.0 x
     
-    (* compute local gradient n times and return the mean *)
-    let grad_n (a : syst) (x : vect) (n : int) =
-      let len = Array.length x in
-      let rec f = fun n ->
-        if n = 0
-        then Array.make len 0.
-        else let x = grad a x in
-             let rest = f (n - 1) in
-             Array.map2 (fun a b -> a +. b) x rest
-      in Array.map (fun v -> v /. (Float.of_int n)) (f n)
-
-    let move (x0 : vect) (x1 : vect) (p : vect) (amount : float) =
-      let gj = Array.map2 (fun x y -> amount *. x *. y) x1 p in
-      Array.map2 (fun x y -> x -. y) x0 gj
+    let objective (a : syst) (x : vect) =
+      let vals = Array.map (fun expr -> Expression.eval (Expression.subst expr x)) (fs a) in
+      norm_vect vals
+    
+    let grad (a : syst) (x : vect) =
+      let g = eval a x in
+      Array.mapi (fun i _ ->
+          let j_i = eval_dfdn a i x in
+          let gj_i = Array.map2 (fun a b -> a *. b) g j_i in
+          sum_vect gj_i
+        ) x
+      
+    let move (x0 : vect) (p : vect) (amount : float) =
+      let ap = Array.map (fun x -> x *. amount) p in
+      Array.map2 (fun x y -> x -. y) x0 ap
     
     let line_search (a : syst) (x : vect) =
-      let m     = 0.05 in  (* maximum move *)
-      let alpha = 0.002 in (* amount to decrease each iteration *)
-      let g = eval a x in 
-      let p = grad_n a x 1000 in (* movement direction *)
+      let m     = 0.1  in (* maximum move *)
+      let alpha = 0.01 in (* amount to decrease each iteration *)
+      let p = grad a x  in (* movement direction *)
+      print_endline (String.concat ", " (Array.to_list (Array.map Float.to_string x)) ^ ", " ^ String.concat ", " (Array.to_list (Array.map Float.to_string p)));
       let init_objective = objective a x in
-      let x' = ref x in
+      let x' = ref x  in
       let j = ref 0.0 in
       while init_objective <= objective a !x' && Float.abs(!j) < m do
         let amount = m -. !j in
         (* print_endline ("F: " ^ Float.to_string (objective a !x') ^ " alpha: " ^ Float.to_string (amount)); *)
-        x' := move x g p amount;
+        x' := move !x' p amount;
         j := !j +. alpha
       done;
       !x'
@@ -91,21 +99,27 @@ module GradientOptimizer =
     let solve (a : syst) (x0 : vect) =
       let rec f = fun x ->
         let x' = line_search a x in
-        (* print_endline (String.concat ", " (Array.to_list (Array.map Float.to_string x))); *)
         let obj = objective a x' in
-        if obj < 0.01 then x
+        if obj < 0.01 then x'
         else f x' in
       f x0
+
+    let vary_solution (_a : syst) (x0 : vect) (_dim : int) (_target : float) = x0
   end
 
 module DirectOptimizer =
   struct
-    type syst = Expression.t Array.t (* the system of equations *)
-    type vect = float Array.t        (* vector of vars          *)
+    type syst = Expression.t Array.t Array.t (* the system of equations *)
+    type vect = float Array.t (* vector of vars          *)
 
+    let fx (a : Expression.t Array.t) = Array.get a 0
+
+    (* all original functions *)
+    let fs (a : syst) = Array.map fx a
+    
     (* give a vector with the value of the system at x *)
     let eval (a : syst) (x : vect) =
-      Array.map (fun expr -> Expression.eval (Expression.subst expr x)) a
+      Array.map (fun expr -> Expression.eval (Expression.subst expr x)) (fs a)
 
     (* give a vector with the value of the objective function
      * of the system at x.
@@ -113,7 +127,7 @@ module DirectOptimizer =
      * The objective function is defined as f_0^2(x) + f_1^2(x) + ... + f_n^2(x) 
      * where each f_i is equation i in the system 'a' *)
     let objective (a : syst) (x : vect) =
-      let vals = Array.map (fun expr -> Expression.eval (Expression. subst expr x)) a in
+      let vals = Array.map (fun expr -> Expression.eval (Expression. subst expr x)) (fs a) in
       Array.fold_left (fun obj x -> obj +. Float.pow x 2.0) 0.0 vals
 
     type point_gen = vect -> float -> float array

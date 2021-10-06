@@ -1,5 +1,5 @@
 type node = { constraints : Core.Constraint.t list;
-              g_obj : Graphics.GraphicsObjects.node;
+              g_obj : Graph.GraphicsObjects.node;
               id : int };;
 let (nodes : node list ref) = ref [];;
 let (selection : int list ref) = ref [];;
@@ -138,8 +138,8 @@ let draw d cr =
     | Some id ->
        let node = node_n id in
        node.g_obj#get_position 
-    | None -> Graphics.Geometry.Point.zero in
-  Graphics.Grid.draw cr w h grid_offset;
+    | None -> Graph.Geometry.Point.zero in
+  Graph.Grid.draw cr w h grid_offset;
   List.iter (fun node ->
       node.g_obj#render cr) !nodes;
   true;;
@@ -187,7 +187,7 @@ let solve () =
                               cs)
     cs;
   let system = Core.Constraint.to_system cs in
-  Array.iter (fun expr -> print_endline (Core.Expression.to_string expr)) system;
+  Array.iter (fun expr -> print_endline (Core.Expression.to_string (Array.get expr 0))) system;
   let init_guess = system_vector () in
   let soln = Solver.solve system init_guess in
   List.iter (fun node ->
@@ -236,20 +236,20 @@ let rec update_selection (id : int) (table_view : GTree.view) (shift : bool) =
     begin
       if List.exists (fun i -> i = id) !selection
       then (selection := List.filter (fun i -> not (i = id)) !selection;
-            node.g_obj#set_selection Graphics.GraphicsObjects.None)
+            node.g_obj#set_selection Graph.GraphicsObjects.None)
       else (match !selection with
             | [] ->
                selection := [id];
-               node.g_obj#set_selection Graphics.GraphicsObjects.Primary;
+               node.g_obj#set_selection Graph.GraphicsObjects.Primary;
             | _ ->
                selection := id::!selection;
-               node.g_obj#set_selection Graphics.GraphicsObjects.Secondary);
+               node.g_obj#set_selection Graph.GraphicsObjects.Secondary);
     end
   else
     begin
       deselect_all table_view;
       selection := [id];
-      node.g_obj#set_selection Graphics.GraphicsObjects.Primary;
+      node.g_obj#set_selection Graph.GraphicsObjects.Primary;
     end;
   label_primary_selection ();
   set_model table_view;
@@ -313,7 +313,7 @@ let on_mouse_up invalidate table_view event =
   let clicked = node_underneath (x, y) in
   (match clicked, !current_drag with
    | (Some (id, _), Valid (sx, sy, _)) ->
-      let d = Graphics.Geometry.Point.distance (x, y) (sx, sy) in
+      let d = Graph.Geometry.Point.distance (x, y) (sx, sy) in
       (* if the user dragged for fewer than 2 units, treat it as a click *)
       if d < 2. then
         update_selection id table_view shift_on
@@ -335,7 +335,7 @@ let new_id () =
   !max + 1;;
 
 let on_add_pressed invalidate _entry () =
-  let g_obj = new Graphics.GraphicsObjects.node () in
+  let g_obj = new Graph.GraphicsObjects.node () in
   g_obj#set_position (Random.float 250., Random.float 200.);
   let new_node = {
       constraints = [];

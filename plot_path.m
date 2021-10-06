@@ -1,27 +1,33 @@
 
-x_axis = linspace(-4, 4, 100);
-y_axis = linspace(-4, 8, 100);
-z = zeros(y_axis, x_axis);
+x_axis = linspace(-10, 10, 100);
+y_axis = linspace(-10, 10, 100);
+z = zeros(length(y_axis), length(x_axis));
 
 for xx = (1:length(x_axis))
   for yy = (1:length(y_axis))
     x = x_axis(xx);
     y = y_axis(yy);
-    a = x^2 - y;
-    b = y - 4;
-    z(yy, xx) = abs(a) + abs(b);
-  endfor
-endfor
+    a = sqrt(x^2 + y^2) - 2;
+    b = x;
+    z(yy, xx) = a^2 + b^2;
+  end
+end
 
-imagesc(x_axis, y_axis, z);
+imagesc(x_axis, y_axis, log10(z / max(max(z))));
 colormap summer;
 hold on;
 
 % Draw path
 
-raw = dlmread('path.csv', ',', 2, 0);
+raw = dlmread('data.csv', ',', 2, 0);
 
 x = raw(:,1);
 y = raw(:,2);
+dx = raw(:,3);
+dy = raw(:,4);
 
-plot(x, y, 'LineWidth', 2, 'b')
+quiver(x, y, dx, dy);
+hold on;
+
+xlabel('x_0');
+ylabel('x_1');
