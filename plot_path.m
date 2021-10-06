@@ -8,7 +8,7 @@ for xx = (1:length(x_axis))
     x = x_axis(xx);
     y = y_axis(yy);
     a = sqrt(x^2 + y^2) - 2;
-    b = x;
+    b = 0;
     z(yy, xx) = a^2 + b^2;
   end
 end
