@@ -1,27 +1,29 @@
+open Primitives
+
 class virtual obj () =
         object(self)
-          val mutable position = (0., 0. : Geometry.Point.t)
+          val mutable position = (0., 0. : Point.t)
 
-          method set_position (pos : Geometry.Point.t) = position <- pos
+          method set_position (pos : Point.t) = position <- pos
           method get_position = position
           
-          method is_inside (p : Geometry.Point.t) =
-            Geometry.Rect.is_inside (self#bounds ()) p
+          method is_inside (p : Point.t) =
+            Rect.is_inside (self#bounds ()) p
           
           method render (cr : Cairo.context) =
-            let px, py = Geometry.Rect.position (self#bounds ()) in
+            let px, py = Rect.position (self#bounds ()) in
             Cairo.translate cr px py;
             self#draw cr;
             Cairo.translate cr (-.px) (-.py);
           (* ~~ draw bounding box ~~ *)
           (* Cairo.set_source_rgb cr 0. 1. 0.;
            * Cairo.rectangle cr px py
-           *   ~w:(Geometry.Rect.width (self#bounds ()))
-           *   ~h:(Geometry.Rect.height (self#bounds ()));
+           *   ~w:(Rect.width (self#bounds ()))
+           *   ~h:(Rect.height (self#bounds ()));
            * Cairo.stroke cr; *)
             
           method private virtual draw : Cairo.context -> unit
-          method private virtual bounds : unit -> Geometry.Rect.t
+          method private virtual bounds : unit -> Rect.t
         end;;
 
 type select_mode = None

@@ -6,7 +6,7 @@ module type Optimizer = sig
   type vect = float Array.t
 
   (* call solve with a custom parameter *)
-  val vary_solution : syst -> vect -> int -> float -> vect
+  val vary_solution : syst -> vect -> int * int -> float * float -> vect
   val solve : syst -> vect -> vect
   val objective : syst -> vect -> float
 end
@@ -80,31 +80,37 @@ module GradientOptimizer =
       let ap = Array.map (fun x -> x *. amount) p in
       Array.map2 (fun x y -> x -. y) x0 ap
     
-    let line_search (a : syst) (x : vect) =
-      let m     = 0.1  in (* maximum move *)
-      let alpha = 0.01 in (* amount to decrease each iteration *)
-      let p = grad a x  in (* movement direction *)
-      print_endline (String.concat ", " (Array.to_list (Array.map Float.to_string x)) ^ ", " ^ String.concat ", " (Array.to_list (Array.map Float.to_string p)));
+    let line_search (a : syst) (x : vect) (dir : vect) =
+      let m     = 0.3  in (* maximum move *)
+      let alpha = 0.03 in (* amount to decrease each iteration *)
       let init_objective = objective a x in
       let x' = ref x  in
       let j = ref 0.0 in
       while init_objective <= objective a !x' && Float.abs(!j) < m do
         let amount = m -. !j in
-        (* print_endline ("F: " ^ Float.to_string (objective a !x') ^ " alpha: " ^ Float.to_string (amount)); *)
-        x' := move !x' p amount;
+        x' := move !x' dir amount;
         j := !j +. alpha
       done;
-      !x'
+      !x';;
     
     let solve (a : syst) (x0 : vect) =
       let rec f = fun x ->
-        let x' = line_search a x in
+        let p = grad a x in (* movement direction *)
+        let x' = line_search a x p in
         let obj = objective a x' in
         if obj < 0.01 then x'
         else f x' in
-      f x0
+      f x0;;
 
-    let vary_solution (_a : syst) (x0 : vect) (_dim : int) (_target : float) = x0
+    let vary_solution (a : syst) (x0 : vect) (dims : int * int) (dir : float * float) =
+      let d1, d2 = dims in
+      let dir1, dir2 = dir in
+      let dir = Array.init (Array.length x0)
+                  (fun idx -> if idx = d1 then dir1
+                              else if idx = d2 then dir2
+                              else 0.) in
+      let step = line_search a x0 dir in
+      solve a step
   end
 
 module DirectOptimizer =
@@ -205,7 +211,7 @@ module DirectOptimizer =
       then (winning_obj, point_n test_points n_dims fwd_index)
       else (winning_obj, point_n test_points n_dims winner)
 
-    let vary_solution (a : syst) (x0 : vect) (dim : int) (target : float) =
+    let _vary_solution (a : syst) (x0 : vect) (dim : int) (target : float) =
       let gtp = test_point_generator (Array.length x0) in
       let iters = ref 0 in
       let x     = ref x0 in
@@ -224,6 +230,8 @@ module DirectOptimizer =
       done;
       !x
 
+    let vary_solution (_a : syst) (x0 : vect) (_dims : int * int) (_dir : float * float) = x0;;
+
     let solve (a : syst) (x0 : vect) =
       let gtp = test_point_generator (Array.length x0) in
       let x = ref x0 in
@@ -235,6 +243,5 @@ module DirectOptimizer =
         x := new_x;
         alpha := new_alpha;
       done;
-      !x
-    
+      !x;;
   end

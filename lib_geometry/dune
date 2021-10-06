@@ -1,4 +1,4 @@
 (library
- (name graph)
+ (name geometry)
  (libraries lablgtk3))
  

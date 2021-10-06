@@ -1,4 +1,5 @@
 open Core
+open Geometry.Primitives
 
 let ( +@) x y = Expression.Bin (ADD, x, y);;
 let ( -@) x y = Expression.Bin (SUB, x, y);;
@@ -18,20 +19,12 @@ let x_sub i   = Expression.X i;;
 let system = [|
     [| f_sqrt (f_sqr (x_sub 0) +@ f_sqr (x_sub 1)) -@ const 2.0;
        x_sub 0 /@ f_sqrt (f_sqr (x_sub 0) +@ f_sqr (x_sub 1));
-       x_sub 1 /@ f_sqrt (f_sqr (x_sub 0) +@ f_sqr (x_sub 1)); |];
-    [| x_sub 0 ;
-       const 1.;
-       const 0. |]
+       x_sub 1 /@ f_sqrt (f_sqr (x_sub 0) +@ f_sqr (x_sub 1)); |]
   |];;
 
 module Solver = System.MakeSystem(System.GradientOptimizer);;
 
 let soln = ref (Solver.solve system [| 10.0; 10.0; |]);;
-
-(* Array.iteri (fun i v ->
- *     print_endline (Int.to_string i ^ " <- " ^ Float.to_string v)) !soln;; *)
-
-(ignore (exit 0));;
 
 let lastfps = ref (Unix.gettimeofday ())
 let frames = ref 0
@@ -88,7 +81,8 @@ let val_to_color (v : float) =
   let b = Float.log10 (1000000. *. v +. 1.) in
   let g = Float.log10 (1000. *. v +. 1.) in
   let r = Float.log10 (100. *. v +. 1.) in
-  Int32.to_int (color_to_int (1.0 -. r, 1.0 -. g, 1.0 -. b))
+  let v = (r +. g +. b) /. 3. in
+  Int32.to_int (color_to_int (v, v, v))
 
 let render_background sx sy =
   Array.init sy
@@ -106,7 +100,10 @@ let expose () =
   let sx = Graphics.size_x () in
   let sy = Graphics.size_y () in
   let mx, my = Graphics.mouse_pos () in
-  let _tx, _ty = screenspace_to_coord sx sy mx my in
+  let tx, ty = screenspace_to_coord sx sy mx my in
+  let ax, ay = Array.get !soln 0, Array.get !soln 1 in
+  let dx, dy = Point.norm (Point.sub (ax, ay) (tx, ty)) in
+  soln := Solver.vary_solution system !soln (0, 1) (dx, dy);
   let data_img = render_background sx sy in
   Graphics.draw_image (Graphics.make_image data_img) 0 0;
   let x_0 = Array.get !soln 0 in

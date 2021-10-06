@@ -1,6 +1,7 @@
+open Primitives
 
 let draw (cr: Cairo.context) (w : float) (h : float)
-      (offset : Geometry.Point.t) =
+      (offset : Point.t) =
   let (offset_x, offset_y) = offset in
   let size = 100. in
   let grid_offset_x = Float.to_int (Float.floor (offset_x /. size)) in

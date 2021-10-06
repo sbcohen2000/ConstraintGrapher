@@ -2,6 +2,8 @@ module Point =
   struct
     type t = float * float
 
+    let zero = 0.0, 0.0
+    
     let add (a : t) (b : t) =
       let (ax, ay), (bx, by) = a, b in
       ax +. bx, ay +. by
@@ -16,8 +18,12 @@ module Point =
     let distance (a : t) (b : t) =
       let (ax, ay), (bx, by) = a, b in
       Float.sqrt (Float.pow (ax -. bx) 2. +. Float.pow (ay -. by) 2.)
+
+    let mag (a : t) =
+      distance a zero
     
-    let zero = 0.0, 0.0
+    let norm (a : t) =
+      scale a (1. /. mag a)
   end
 
 module Rect =
