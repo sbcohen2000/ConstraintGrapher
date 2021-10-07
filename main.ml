@@ -6,7 +6,7 @@ type node = { constraints : Core.Constraint.t list;
 let (nodes : node list ref) = ref [];;
 let (selection : int list ref) = ref [];;
 
-module Solver = Core.System.MakeSystem(Core.System.DirectOptimizer);;
+module Solver = Core.System.MakeSystem(Core.System.GradientOptimizer);;
 
 let node_n (id : int) =
   List.find (fun node -> id = node.id) !nodes
@@ -189,7 +189,6 @@ let solve () =
                               cs)
     cs;
   let system = Core.Constraint.to_system cs in
-  Array.iter (fun expr -> print_endline (Core.Expression.to_string (Array.get expr 0))) system;
   let init_guess = system_vector () in
   let soln = Solver.solve system init_guess in
   List.iter (fun node ->
@@ -198,12 +197,14 @@ let solve () =
                                Array.get soln (2 * rel_id + 1)))
     !nodes;;
 
-let create_solution_updater (dim : int) =
+let create_solution_updater (d1, d2 : int * int) =
   let cs = ordered_relative_constraints () in
   let system = Core.Constraint.to_system cs in
-  fun (target : float) -> 
+  fun (tx, ty : float * float) -> 
   let init_guess = system_vector () in
-  let soln = Solver.vary_solution system init_guess (dim, 0) (target, 0.0) in
+  let ax, ay = Array.get init_guess d1, Array.get init_guess d2 in
+  let dx, dy = Point.norm (Point.sub (ax, ay) (tx, ty)) in
+  let soln = Solver.vary_solution system init_guess (d1, d2) (dx, dy) in
   List.iter (fun node ->
       let rel_id = relative_id node.id in
       node.g_obj#set_position (Array.get soln (2 * rel_id),
@@ -273,10 +274,9 @@ let node_underneath (x, y : float * float) =
                else find (i + 1) ns in
   find 0 sorted_nodes;;
 
-type updaters = { x_updater : float -> unit;
-                  y_updater : float -> unit }
-type drag = Pending of updaters (* clicked down, not dragged yet *)
-          | Valid of float * float * updaters (* dragging *)
+type updater = float * float -> unit
+type drag = Pending of updater (* clicked down, not dragged yet *)
+          | Valid of float * float * updater  (* dragging *)
           | Invalid;; (* clicked on nothing *)
 let current_drag = ref Invalid;;
 
@@ -285,8 +285,7 @@ let on_mouse_move invalidate event =
   (match !current_drag with
    | Pending upd -> current_drag := Valid (x, y, upd)
    | Valid (_, _, upd) ->
-      upd.x_updater x;
-      upd.y_updater y;
+      upd (x, y);
       invalidate ();
    | Invalid -> ());
   true;;
@@ -299,10 +298,7 @@ let on_mouse_down _invalidate event =
    | Some (_, ordered_id) ->
       let x_dim = ordered_id * 2 in
       let y_dim = ordered_id * 2 + 1 in
-      print_endline ("starting to drag with x_dim: " ^ Int.to_string x_dim ^ ", y_dim: " ^ Int.to_string y_dim);
-      let (upd : updaters) = {
-          x_updater = create_solution_updater x_dim;
-          y_updater = create_solution_updater y_dim } in
+      let upd = create_solution_updater (x_dim, y_dim) in
       current_drag := Pending upd
    | None -> current_drag := Invalid);
   true;;

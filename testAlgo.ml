@@ -12,17 +12,20 @@ let f_sqrt x  = Expression.Mon (SQRT, x);;
 let const x   = Expression.Const x;;
 let x_sub i   = Expression.X i;;
 
+
+module Solver = System.MakeSystem(System.GradientOptimizer);;
+
 (* f:     sqrt { x_0^2 + x_1 ^2 } - 2
  * fdx_0: a / sqrt { x_0^2 + x_1^2 }
  * fdx_1: b / sqrt { x_0^2 + x_1^2 }
  *) 
-let system = [|
-    [| f_sqrt (f_sqr (x_sub 0) +@ f_sqr (x_sub 1)) -@ const 2.0;
-       x_sub 0 /@ f_sqrt (f_sqr (x_sub 0) +@ f_sqr (x_sub 1));
-       x_sub 1 /@ f_sqrt (f_sqr (x_sub 0) +@ f_sqr (x_sub 1)); |]
-  |];;
-
-module Solver = System.MakeSystem(System.GradientOptimizer);;
+let (system : Core.System.eqn array) = [|
+    { f = f_sqrt (f_sqr (x_sub 0) +@ f_sqr (x_sub 1)) -@ const 2.0;
+      ds = [
+          (0, x_sub 0 /@ f_sqrt (f_sqr (x_sub 0) +@ f_sqr (x_sub 1)));
+          (1, x_sub 1 /@ f_sqrt (f_sqr (x_sub 0) +@ f_sqr (x_sub 1)));
+    ] };
+  |]
 
 let soln = ref (Solver.solve system [| 10.0; 10.0; |]);;
 

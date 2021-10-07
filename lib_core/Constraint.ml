@@ -56,34 +56,64 @@ let con_to_system (this_node : int) (con : t) =
   let open Expression in
   match con with
   | Point (x, y) -> (* this_node's x = x, this_node's y = y *)
-     [ [| Bin (SUB, X (node_x this_node), Const x);
-          Bin (SUB, X (node_y this_node), Const y) |] ]
+     let (eqn1 : System.eqn) =
+       {
+         f = Bin (SUB, X (node_x this_node), Const x);
+         ds = [
+             (node_x this_node, Const 1.0)
+           ]
+       } in
+     let (eqn2 : System.eqn) =
+       {
+         f = Bin (SUB, X (node_y this_node), Const y);
+         ds = [
+             (node_y this_node, Const 1.0)
+           ]
+       } in
+     [ eqn1; eqn2 ]
   | Axis (target_node, Horizontal) -> (* this_nodes's y = target_node's y *)
-     [ [| Bin (SUB, X (node_y this_node), X (node_y target_node)) |] ]
+     let (eqn : System.eqn) =
+       {
+         f = Bin (SUB, X (node_y this_node), X (node_y target_node));
+         ds = [
+             (node_y this_node,   Const   1.0);
+             (node_y target_node, Const (-1.0));
+           ]
+       }
+     in [ eqn ]
   | Axis (target_node, Vertical) -> (* this_node's x = target_node's x *)
-     [ [| Bin (SUB, X (node_x this_node), X (node_x target_node)) |] ]
-  | Radial (target_node, r) -> (* this_node is distance r from target node *)
-     let target_x = X (node_x target_node) in
-     let target_y = X (node_y target_node) in
-     let this_x = X (node_x this_node) in
-     let this_y = X (node_y this_node) in
-     [ [| Bin (SUB, Mon (SQRT, Bin (ADD, Mon (SQR, Bin (SUB, target_x, this_x)),
-                                    Mon (SQR, Bin (SUB, target_y, this_y)))),
-               Const r) |] ]
-  | Offset (target_node, x, y) ->
-     [ [| Bin (SUB, X (node_x this_node),
-               Bin (ADD, X(node_x target_node), Const x));
-          Bin (SUB, X (node_y this_node),
-               Bin (ADD, X(node_y target_node), Const y)) |] ]
-  | Colinear (targ_a, targ_b) ->
-     let x = X (node_x this_node) in
-     let y = X (node_y this_node) in
-     let x_1 = X (node_x targ_a) in
-     let y_1 = X (node_y targ_a) in
-     let x_2 = X (node_x targ_b) in
-     let y_2 = X (node_y targ_b) in
-     let m = Bin (DIV, Bin (SUB, y_1, y_2), Bin (SUB, x_1, x_2)) in
-     [ [| Bin (ADD, Bin (SUB, Bin (MUL, m, Bin (SUB, x, x_1)), y), y_1) |] ]
+     let (eqn : System.eqn) =
+       {
+         f = Bin (SUB, X (node_x this_node), X (node_x target_node));
+         ds = [
+             (node_x this_node,   Const   1.0);
+             (node_x target_node, Const (-1.0));
+           ]
+       }
+     in [ eqn ]
+  | _ -> []
+  (* | Radial (target_node, r) -> (\* this_node is distance r from target node *\)
+   *    let target_x = X (node_x target_node) in
+   *    let target_y = X (node_y target_node) in
+   *    let this_x = X (node_x this_node) in
+   *    let this_y = X (node_y this_node) in
+   *    [ [| Bin (SUB, Mon (SQRT, Bin (ADD, Mon (SQR, Bin (SUB, target_x, this_x)),
+   *                                   Mon (SQR, Bin (SUB, target_y, this_y)))),
+   *              Const r) |] ]
+   * | Offset (target_node, x, y) ->
+   *    [ [| Bin (SUB, X (node_x this_node),
+   *              Bin (ADD, X(node_x target_node), Const x));
+   *         Bin (SUB, X (node_y this_node),
+   *              Bin (ADD, X(node_y target_node), Const y)) |] ]
+   * | Colinear (targ_a, targ_b) ->
+   *    let x = X (node_x this_node) in
+   *    let y = X (node_y this_node) in
+   *    let x_1 = X (node_x targ_a) in
+   *    let y_1 = X (node_y targ_a) in
+   *    let x_2 = X (node_x targ_b) in
+   *    let y_2 = X (node_y targ_b) in
+   *    let m = Bin (DIV, Bin (SUB, y_1, y_2), Bin (SUB, x_1, x_2)) in
+   *    [ [| Bin (ADD, Bin (SUB, Bin (MUL, m, Bin (SUB, x, x_1)), y), y_1) |] ] *)
 
 let to_system (constraints : t list list) =
   (* The solution vector contains 2 * |nodes| elements,
