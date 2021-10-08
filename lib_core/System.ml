@@ -10,7 +10,7 @@ module type Optimizer = sig
   type vect
 
   (* call solve with a custom parameter *)
-  val vary_solution : syst -> vect -> int * int -> float * float -> vect
+  val step_solution : syst -> vect -> int * int -> float * float -> vect
   val solve : syst -> vect -> vect
   val objective : syst -> vect -> float
 end
@@ -35,7 +35,7 @@ module MakeSystem(O : Optimizer) =
     let to_string (a : syst) =
       String.concat "; " (Array.to_list (Array.map Expression.to_string (fs a)))
 
-    let vary_solution = O.vary_solution
+    let step_solution = O.step_solution
     let solve = O.solve
     let objective = O.objective
   end
@@ -86,10 +86,10 @@ module GradientOptimizer =
     let move (x0 : vect) (p : vect) (amount : float) =
       let ap = Array.map (fun x -> x *. amount) p in
       Array.map2 (fun x y -> x -. y) x0 ap
-    
+
     let line_search (a : syst) (x : vect) (dir : vect) =
       let m     = 0.3  in (* maximum move *)
-      let alpha = 0.03 in (* amount to decrease each iteration *)
+      let alpha = 0.01 in (* amount to decrease each iteration *)
       let init_objective = objective a x in
       let x' = ref x  in
       let j = ref 0.0 in
@@ -109,13 +109,44 @@ module GradientOptimizer =
         else f x' in
       f x0;;
 
-    let vary_solution (a : syst) (x0 : vect) (dims : int * int) (dir : float * float) =
+    let pi = 3.14159;;
+
+    exception Empty
+    let first = function
+      | [] -> raise Empty
+      | n::_ -> n;;
+ 
+    let diff (a : vect) (b : vect) =
+      Array.map2 (fun x y -> x -. y) a b;;
+
+    let distance (a : vect) (b : vect) =
+      let d = diff a b in norm_vect d;;
+
+    let get_probes (n_vars : int) (dims : int * int) =
       let d1, d2 = dims in
-      let dir1, dir2 = dir in
-      let dir = Array.init (Array.length x0)
-                  (fun idx -> if idx = d1 then dir1
-                              else if idx = d2 then dir2
-                              else 0.) in
-      let step = line_search a x0 dir in
-      solve a step
+      let n_probes = 6 in
+      List.init n_probes (fun i ->
+          let angle = (Float.of_int i /. Float.of_int n_probes) *. 2. *. pi in
+          Array.init n_vars
+            (fun i -> if i = d1 then Float.cos angle
+                      else if i = d2 then Float.sin angle
+                      else 0.));;
+    
+    let step_solution (a : syst) (x0 : vect) (dims : int * int) (targ : float * float) =
+      let d1, d2 = dims in
+      let tx, ty = targ in
+      let n_vars = (Array.length x0) in
+      let targ = Array.init n_vars
+                   (fun i -> if i = d1 then tx
+                             else if i = d2 then ty
+                             else Array.get x0 i) in
+      let probes = get_probes n_vars dims in
+      let step_f = line_search a x0 in
+      let steps = List.map step_f probes in
+      let compare_f = distance targ in
+      let steps_sorted = List.sort (fun pa pb ->
+                             Float.compare (compare_f pa) (compare_f pb)
+                           ) steps in
+      let best_step = first steps_sorted in
+      solve a best_step
   end

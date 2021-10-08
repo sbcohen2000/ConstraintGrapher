@@ -6,6 +6,12 @@ type node = { constraints : Core.Constraint.t list;
 let (nodes : node list ref) = ref [];;
 let (selection : int list ref) = ref [];;
 
+type drawing = Line of { a : int;
+                         b : int }
+             | Circle of { c : int;
+                           r : int };;
+let (drawings : drawing list ref) = ref [];;
+
 module Solver = Core.System.MakeSystem(Core.System.GradientOptimizer);;
 
 let node_n (id : int) =
@@ -129,6 +135,29 @@ let on_key_pressed_in_table (tb : GTree.view) (ev : GdkEvent.Key.t) =
 
 (* ==== GEOMETRIC SOLVING =================================================== *)
 
+let render_drawings _d cr =
+  List.iter (fun drawing ->
+      match drawing with
+      | Line l ->
+         let node_a = node_n l.a in
+         let node_b = node_n l.b in
+         let ax, ay = node_a.g_obj#get_position in
+         let bx, by = node_b.g_obj#get_position in
+         Cairo.set_line_width cr 3.;
+         Cairo.move_to cr ax ay;
+         Cairo.line_to cr bx by;
+         Cairo.stroke cr;
+      | Circle c ->
+         let node_c = node_n c.c in
+         let node_r = node_n c.r in
+         let ax, ay = node_c.g_obj#get_position in
+         let b = node_r.g_obj#get_position in
+         let r = Geometry.Primitives.Point.distance (ax, ay) b in
+         Cairo.set_line_width cr 3.;
+         Cairo.arc cr ax ay ~r ~a1:0.0 ~a2:6.283185;
+         Cairo.stroke cr;
+    ) !drawings;;
+
 let draw d cr =
   (* white background *)
   Cairo.set_source_rgb cr 1. 1. 1.;
@@ -142,6 +171,7 @@ let draw d cr =
        node.g_obj#get_position 
     | None -> Point.zero in
   Geometry.Grid.draw cr w h grid_offset;
+  render_drawings d cr;
   List.iter (fun node ->
       node.g_obj#render cr) !nodes;
   true;;
@@ -200,15 +230,18 @@ let solve () =
 let create_solution_updater (d1, d2 : int * int) =
   let cs = ordered_relative_constraints () in
   let system = Core.Constraint.to_system cs in
-  fun (tx, ty : float * float) -> 
-  let init_guess = system_vector () in
-  let ax, ay = Array.get init_guess d1, Array.get init_guess d2 in
-  let dx, dy = Point.norm (Point.sub (ax, ay) (tx, ty)) in
-  let soln = Solver.vary_solution system init_guess (d1, d2) (dx, dy) in
+  let soln = ref (system_vector ()) in
+  fun (tx, ty : float * float) ->
+  (* this should be made dynamic somehow so that
+   * the correct number of iterations is performed to
+   * reach "steady state" and no more. *)
+  for _i = 0 to 10 do
+    soln := Solver.step_solution system !soln (d1, d2) (tx, ty);
+  done;
   List.iter (fun node ->
       let rel_id = relative_id node.id in
-      node.g_obj#set_position (Array.get soln (2 * rel_id),
-                               Array.get soln (2 * rel_id + 1)))
+      node.g_obj#set_position (Array.get !soln (2 * rel_id),
+                               Array.get !soln (2 * rel_id + 1)))
     !nodes;;
 
 (* remove labels from all nodes *)
@@ -466,11 +499,21 @@ let on_colinear_con_pressed invalidate (iput : input_group) () =
   | _ ->
      set_message iput "Colinear constriant requires three nodes";;
 
-let on_line_pressed _invalidate (_iput : input_group) () =
-  print_endline "line pressed";;
-
-let on_circle_pressed _invalidate (_iput : input_group) () =
-  print_endline "circle pressed";;
+let on_line_pressed invalidate (_iput : input_group) () =
+  match !selection with
+  | [a; b] -> 
+     let (new_line : drawing) = Line { a; b } in
+     drawings := new_line::!drawings;
+     invalidate ();
+  | _ -> ();;
+  
+let on_circle_pressed invalidate (_iput : input_group) () =
+    match !selection with
+  | [c; r] -> 
+     let (new_circle : drawing) = Circle { c; r } in
+     drawings := new_circle::!drawings;
+     invalidate ();
+  | _ -> ();;
 
 let make_toolbar_button (image_name : string) (label : string) =
   let path = "/home/sam/Documents/ConstraintGrapher/resources/" ^ image_name in

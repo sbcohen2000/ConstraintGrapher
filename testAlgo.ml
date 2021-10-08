@@ -1,5 +1,4 @@
 open Core
-open Geometry.Primitives
 
 let ( +@) x y = Expression.Bin (ADD, x, y);;
 let ( -@) x y = Expression.Bin (SUB, x, y);;
@@ -104,9 +103,7 @@ let expose () =
   let sy = Graphics.size_y () in
   let mx, my = Graphics.mouse_pos () in
   let tx, ty = screenspace_to_coord sx sy mx my in
-  let ax, ay = Array.get !soln 0, Array.get !soln 1 in
-  let dx, dy = Point.norm (Point.sub (ax, ay) (tx, ty)) in
-  soln := Solver.vary_solution system !soln (0, 1) (dx, dy);
+  soln := Solver.step_solution system !soln (0, 1) (tx, ty);
   let data_img = render_background sx sy in
   Graphics.draw_image (Graphics.make_image data_img) 0 0;
   let x_0 = Array.get !soln 0 in

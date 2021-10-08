@@ -91,16 +91,36 @@ let con_to_system (this_node : int) (con : t) =
            ]
        }
      in [ eqn ]
+  | Radial (target_node, r) -> (* this_node is distance r from target node *)
+     let target_x = X (node_x target_node) in
+     let target_y = X (node_y target_node) in
+     let this_x = X (node_x this_node) in
+     let this_y = X (node_y this_node) in
+     let (eqn : System.eqn) =
+       {
+         f = Bin (SUB, Mon (SQRT, Bin (ADD, Mon (SQR, Bin (SUB, target_x, this_x)),
+                                       Mon (SQR, Bin (SUB, target_y, this_y)))),
+                  Const r);
+         ds = [
+             (node_x target_node, Bin (DIV, Bin (SUB, target_x, this_x),
+                                       Mon (SQRT, Bin (ADD, Mon (SQR, Bin (SUB, target_x, this_x)),
+                                                       Mon (SQR, Bin (SUB, target_y, this_y))))));
+             (node_x this_node, Bin (MUL, Const (-1.),
+                                     Bin (DIV, Bin (SUB, target_x, this_x),
+                                          Mon (SQRT, Bin (ADD, Mon (SQR, Bin (SUB, target_x, this_x)),
+                                                          Mon (SQR, Bin (SUB, target_y, this_y)))))));
+             (node_y target_node, Bin (DIV, Bin (SUB, target_y, this_y),
+                                       Mon (SQRT, Bin (ADD, Mon (SQR, Bin (SUB, target_x, this_x)),
+                                                       Mon (SQR, Bin (SUB, target_y, this_y))))));
+             (node_y this_node, Bin (MUL, Const (-1.),
+                                     Bin (DIV, Bin (SUB, target_y, this_y),
+                                          Mon (SQRT, Bin (ADD, Mon (SQR, Bin (SUB, target_x, this_x)),
+                                                          Mon (SQR, Bin (SUB, target_y, this_y)))))));
+           ]
+       }
+     in [ eqn ]
   | _ -> []
-  (* | Radial (target_node, r) -> (\* this_node is distance r from target node *\)
-   *    let target_x = X (node_x target_node) in
-   *    let target_y = X (node_y target_node) in
-   *    let this_x = X (node_x this_node) in
-   *    let this_y = X (node_y this_node) in
-   *    [ [| Bin (SUB, Mon (SQRT, Bin (ADD, Mon (SQR, Bin (SUB, target_x, this_x)),
-   *                                   Mon (SQR, Bin (SUB, target_y, this_y)))),
-   *              Const r) |] ]
-   * | Offset (target_node, x, y) ->
+  (* | Offset (target_node, x, y) ->
    *    [ [| Bin (SUB, X (node_x this_node),
    *              Bin (ADD, X(node_x target_node), Const x));
    *         Bin (SUB, X (node_y this_node),
