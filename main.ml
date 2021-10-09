@@ -233,12 +233,18 @@ let create_solution_updater (d1, d2 : int * int) =
   let system = Core.Constraint.to_system cs in
   let soln = ref (system_vector ()) in
   fun (tx, ty : float * float) ->
-  (* this should be made dynamic somehow so that
-   * the correct number of iterations is performed to
-   * reach "steady state" and no more. *)
-  for _i = 0 to 10 do
-    soln := Solver.step_solution system !soln (d1, d2) (tx, ty);
-  done;
+  let rec iter = fun last_soln -> 
+    (* need to accumulate a few steps for the delta
+     * measurement to be effective *)
+    for _i = 0 to 10 do
+      soln := Solver.step_solution system !soln (d1, d2) (tx, ty);
+    done;
+    let delta = Array.fold_left (fun d elem -> d +. Float.abs elem) 0.0
+                  (Array.map2 (fun a b -> a -. b) !soln last_soln) in
+    (* if the system has reached steady state, we can stop *)
+    if delta > 10. then iter !soln
+    else () in
+  iter !soln;
   List.iter (fun node ->
       let rel_id = relative_id node.id in
       node.g_obj#set_position (Array.get !soln (2 * rel_id),
