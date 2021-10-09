@@ -136,6 +136,7 @@ let on_key_pressed_in_table (tb : GTree.view) (ev : GdkEvent.Key.t) =
 (* ==== GEOMETRIC SOLVING =================================================== *)
 
 let render_drawings _d cr =
+  Cairo.set_source_rgb cr 0. 0. 0.;
   List.iter (fun drawing ->
       match drawing with
       | Line l ->

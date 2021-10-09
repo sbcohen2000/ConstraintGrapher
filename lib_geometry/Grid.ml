@@ -47,4 +47,5 @@ let draw (cr: Cairo.context) (w : float) (h : float)
       Cairo.move_to cr text_padding (y -. te.height /. 2. -. te.y_bearing);
       Cairo.show_text cr str;
     done;
+    Cairo.stroke cr;
   end;;
