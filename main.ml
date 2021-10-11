@@ -233,7 +233,7 @@ let create_solution_updater (d1, d2 : int * int) =
   let system = Core.Constraint.to_system cs in
   let soln = ref (system_vector ()) in
   fun (tx, ty : float * float) ->
-  let rec iter = fun last_soln -> 
+  let rec iter = fun last_soln ->
     (* need to accumulate a few steps for the delta
      * measurement to be effective *)
     for _i = 0 to 10 do
@@ -242,7 +242,7 @@ let create_solution_updater (d1, d2 : int * int) =
     let delta = Array.fold_left (fun d elem -> d +. Float.abs elem) 0.0
                   (Array.map2 (fun a b -> a -. b) !soln last_soln) in
     (* if the system has reached steady state, we can stop *)
-    if delta > 10. then iter !soln
+    if delta > 3. then iter !soln
     else () in
   iter !soln;
   List.iter (fun node ->
@@ -298,7 +298,6 @@ let rec update_selection (id : int) (table_view : GTree.view) (shift : bool) =
   set_model table_view;
 
 and deselect_all (table_view : GTree.view) =
-  print_endline "deselecting all";
   List.iter (fun id -> update_selection id table_view true) !selection;;
 
 (* ==== MOUSE CONTROLS ====================================================== *)

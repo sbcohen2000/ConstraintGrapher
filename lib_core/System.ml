@@ -88,7 +88,7 @@ module GradientOptimizer =
       Array.map2 (fun x y -> x -. y) x0 ap
 
     let line_search (a : syst) (x : vect) (dir : vect) =
-      let m     = 0.3  in (* maximum move *)
+      let m     = 0.1  in (* maximum move *)
       let alpha = 0.01 in (* amount to decrease each iteration *)
       let init_objective = objective a x in
       let x' = ref x  in
@@ -105,7 +105,7 @@ module GradientOptimizer =
         let p = grad a x in (* movement direction *)
         let x' = line_search a x p in
         let obj = objective a x' in
-        if obj < 0.01 then x'
+        if obj < 0.1 then x'
         else f x' in
       f x0;;
 
@@ -124,7 +124,7 @@ module GradientOptimizer =
 
     let get_probes (n_vars : int) (dims : int * int) =
       let d1, d2 = dims in
-      let n_probes = 6 in
+      let n_probes = 18 in
       List.init n_probes (fun i ->
           let angle = (Float.of_int i /. Float.of_int n_probes) *. 2. *. pi in
           Array.init n_vars
@@ -136,6 +136,8 @@ module GradientOptimizer =
       let d1, d2 = dims in
       let tx, ty = targ in
       let n_vars = (Array.length x0) in
+      (* target is the current solution vector with 
+       * d1 and d2 subbed for the target position *)
       let targ = Array.init n_vars
                    (fun i -> if i = d1 then tx
                              else if i = d2 then ty

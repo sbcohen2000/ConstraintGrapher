@@ -119,21 +119,52 @@ let con_to_system (this_node : int) (con : t) =
            ]
        }
      in [ eqn ]
-  | _ -> []
-  (* | Offset (target_node, x, y) ->
-   *    [ [| Bin (SUB, X (node_x this_node),
-   *              Bin (ADD, X(node_x target_node), Const x));
-   *         Bin (SUB, X (node_y this_node),
-   *              Bin (ADD, X(node_y target_node), Const y)) |] ]
-   * | Colinear (targ_a, targ_b) ->
-   *    let x = X (node_x this_node) in
-   *    let y = X (node_y this_node) in
-   *    let x_1 = X (node_x targ_a) in
-   *    let y_1 = X (node_y targ_a) in
-   *    let x_2 = X (node_x targ_b) in
-   *    let y_2 = X (node_y targ_b) in
-   *    let m = Bin (DIV, Bin (SUB, y_1, y_2), Bin (SUB, x_1, x_2)) in
-   *    [ [| Bin (ADD, Bin (SUB, Bin (MUL, m, Bin (SUB, x, x_1)), y), y_1) |] ] *)
+  | Offset (target_node, x, y) ->
+     let (eqn1 : System.eqn) =
+       {
+         f = Bin (SUB, X (node_x this_node),
+                  Bin (ADD, X(node_x target_node), Const x));
+         ds = [
+             (node_x this_node, Const 1.);
+             (node_x target_node, Const (-1.));
+           ]
+       } in
+     let (eqn2 : System.eqn) =
+       {
+         f = Bin (SUB, X (node_y this_node),
+                  Bin (ADD, X(node_y target_node), Const y));
+         ds = [
+             (node_y this_node, Const 1.);
+             (node_y target_node, Const (-1.));
+           ]
+       }
+     in [ eqn1; eqn2 ]
+  | Colinear (targ_a, targ_b) ->
+     let x = node_x this_node in
+     let y = node_y this_node in
+     let x_1 = node_x targ_a in
+     let y_1 = node_y targ_a in
+     let x_2 = node_x targ_b in
+     let y_2 = node_y targ_b in
+     let m = Bin (DIV, Bin (SUB, X y_1, X y_2), Bin (SUB, X x_1, X x_2)) in
+     let neg_m = Bin(MUL, m, Const (-1.)) in
+     let (eqn : System.eqn) = {
+         f = Bin (ADD, Bin (SUB, Bin (MUL, m, Bin (SUB, X x, X x_1)), X y), X y_1);
+         ds = [
+             (x, m);
+             (y, Const (-1.));
+             (x_1, Bin (SUB, neg_m,
+                        Bin (DIV, Bin (MUL, Bin (SUB, X x, X x_1), Bin (SUB, X y_1, X y_2)),
+                           Mon (SQR, Bin (SUB, X x_1, X x_2)))));
+             (y_1, Bin (ADD, Const 1.,
+                     Bin (DIV, Bin (SUB, X x, X x_1), Bin (SUB, X x_1, X x_2))));
+             (x_2, Bin (DIV, Bin (MUL, Bin (SUB, X x, X x_1), Bin (SUB, X y_1, X y_2)),
+                        Mon (SQR, Bin (SUB, X x_1, X x_2))));
+             (y_2, Bin (MUL, Const (-1.),
+                     Bin (DIV, Bin (SUB, X x, X x_1), Bin (SUB, X x_1, X x_2))));
+           ]
+       }
+     in [ eqn ];;
 
 let to_system (constraints : t list list) =
   (* The solution vector contains 2 * |nodes| elements,
