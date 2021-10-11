@@ -242,7 +242,7 @@ let create_solution_updater (d1, d2 : int * int) =
     let delta = Array.fold_left (fun d elem -> d +. Float.abs elem) 0.0
                   (Array.map2 (fun a b -> a -. b) !soln last_soln) in
     (* if the system has reached steady state, we can stop *)
-    if delta > 3. then iter !soln
+    if delta > 1. then iter !soln
     else () in
   iter !soln;
   List.iter (fun node ->
