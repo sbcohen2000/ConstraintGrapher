@@ -88,24 +88,24 @@ module GradientOptimizer =
       Array.map2 (fun x y -> x -. y) x0 ap
 
     let line_search (a : syst) (x : vect) (dir : vect) =
-      let m     = 0.1  in (* maximum move *)
+      let m     = 0.3  in (* maximum move *)
       let alpha = 0.01 in (* amount to decrease each iteration *)
       let init_objective = objective a x in
-      let x' = ref x  in
       let j = ref 0.0 in
-      while init_objective <= objective a !x' && Float.abs(!j) < m do
-        let amount = m -. !j in
-        x' := move !x' dir amount;
+      while
+        let x' = move x dir (m -. !j) in
+        objective a x' > init_objective
+            && Float.abs(!j) < m do
         j := !j +. alpha
       done;
-      !x';;
-    
+      move x dir (m -. !j);;
+
     let solve (a : syst) (x0 : vect) =
       let rec f = fun x ->
         let p = grad a x in (* movement direction *)
         let x' = line_search a x p in
         let obj = objective a x' in
-        if obj < 0.1 then x'
+        if obj < 0.01 then x'
         else f x' in
       f x0;;
 
@@ -122,33 +122,38 @@ module GradientOptimizer =
     let distance (a : vect) (b : vect) =
       let d = diff a b in norm_vect d;;
 
-    let get_probes (n_vars : int) (dims : int * int) =
+    let get_probes (x0 : vect) (dims : int * int) =
       let d1, d2 = dims in
-      let n_probes = 18 in
+      let n_probes = 12 in
       List.init n_probes (fun i ->
           let angle = (Float.of_int i /. Float.of_int n_probes) *. 2. *. pi in
-          Array.init n_vars
-            (fun i -> if i = d1 then Float.cos angle
-                      else if i = d2 then Float.sin angle
-                      else 0.));;
-    
+          Array.mapi (fun i v ->
+              if i = d1 then v +. 0.3 *. Float.cos angle
+              else if i = d2 then v +. 0.3 *. Float.sin angle
+              else v) x0);;
+
+    let smallest (l : 'a list) (compare_f : 'a -> float) =
+      let rec f = fun lst curr curr_val ->
+        match lst with
+        | [] -> curr
+        | x::xs ->
+           let v = compare_f x
+           in if v < curr_val then
+                f xs x v
+              else
+                f xs curr curr_val in
+      f l (List.nth l 0) Float.infinity;;
+      
     let step_solution (a : syst) (x0 : vect) (dims : int * int) (targ : float * float) =
       let d1, d2 = dims in
       let tx, ty = targ in
-      let n_vars = (Array.length x0) in
       (* target is the current solution vector with 
        * d1 and d2 subbed for the target position *)
-      let targ = Array.init n_vars
-                   (fun i -> if i = d1 then tx
-                             else if i = d2 then ty
-                             else Array.get x0 i) in
-      let probes = get_probes n_vars dims in
-      let step_f = line_search a x0 in
-      let steps = List.map step_f probes in
-      let compare_f = distance targ in
-      let steps_sorted = List.sort (fun pa pb ->
-                             Float.compare (compare_f pa) (compare_f pb)
-                           ) steps in
-      let best_step = first steps_sorted in
+      let targ = Array.mapi
+                   (fun i v -> if i = d1 then tx
+                               else if i = d2 then ty
+                               else v) x0 in
+      let probes = get_probes x0 dims in
+      let best_step = smallest probes (distance targ) in
       solve a best_step
   end

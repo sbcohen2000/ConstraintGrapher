@@ -515,7 +515,7 @@ let on_line_pressed invalidate (_iput : input_group) () =
   
 let on_circle_pressed invalidate (_iput : input_group) () =
     match !selection with
-  | [c; r] -> 
+  | [r; c] -> 
      let (new_circle : drawing) = Circle { c; r } in
      drawings := new_circle::!drawings;
      invalidate ();

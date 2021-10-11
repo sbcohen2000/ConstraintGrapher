@@ -1,6 +1,6 @@
 
-x_axis = linspace(-10, 10, 100);
-y_axis = linspace(-10, 10, 100);
+x_axis = linspace(-3, 3, 1000);
+y_axis = linspace(-3, 3, 1000);
 z = zeros(length(y_axis), length(x_axis));
 
 for xx = (1:length(x_axis))
@@ -14,20 +14,35 @@ for xx = (1:length(x_axis))
 end
 
 imagesc(x_axis, y_axis, log10(z / max(max(z))));
-colormap summer;
+colormap gray;
 hold on;
 
 % Draw path
 
-raw = dlmread('data.csv', ',', 2, 0);
+raw = readmatrix('data.csv');
+raw = raw(1:1,:);
 
 x = raw(:,1);
 y = raw(:,2);
-dx = raw(:,3);
-dy = raw(:,4);
+selected_x = raw(:,3);
+selected_y = raw(:,4);
+rest = raw(:,5:end);
+points = zeros(height(raw) * 5, 2);
 
-quiver(x, y, dx, dy);
+idxs = 1:5:height(rest)*5;
+for k = 1:height(rest)
+    idx = idxs(k);
+    for r = 0:4
+        points(idx + r, 1) = rest(k, 1 + r * 2);
+        points(idx + r, 2) = rest(k, 2 + r * 2);
+    end
+end
+
+plot(points(:,1), points(:,2), 'b*');
 hold on;
+plot(x, y, 'r*');
+hold on
+plot(x, y, 'gO');
 
 xlabel('x_0');
 ylabel('x_1');
