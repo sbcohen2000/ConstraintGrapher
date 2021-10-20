@@ -228,28 +228,31 @@ let solve () =
                                Array.get soln (2 * rel_id + 1)))
     !nodes;;
 
-let create_solution_updater (d1, d2 : int * int) =
+let create_solution_updater invalidate (d1, d2 : int * int) =
   let cs = ordered_relative_constraints () in
   let system = Core.Constraint.to_system cs in
   let soln = ref (system_vector ()) in
+  let render = fun solution ->
+    List.iter (fun node ->
+        let rel_id = relative_id node.id in
+        node.g_obj#set_position (Array.get solution (2 * rel_id),
+                                 Array.get solution (2 * rel_id + 1)))
+      !nodes; invalidate () in
   fun (tx, ty : float * float) ->
   let rec iter = fun last_soln ->
     (* need to accumulate a few steps for the delta
      * measurement to be effective *)
-    for _i = 0 to 10 do
+    for _ = 0 to 10 do
       soln := Solver.step_solution system !soln (d1, d2) (tx, ty);
     done;
+    render !soln;
     let delta = Array.fold_left (fun d elem -> d +. Float.abs elem) 0.0
                   (Array.map2 (fun a b -> a -. b) !soln last_soln) in
     (* if the system has reached steady state, we can stop *)
-    if delta > 1. then iter !soln
-    else () in
+    if delta < 1. then ()
+    else iter !soln in
   iter !soln;
-  List.iter (fun node ->
-      let rel_id = relative_id node.id in
-      node.g_obj#set_position (Array.get !soln (2 * rel_id),
-                               Array.get !soln (2 * rel_id + 1)))
-    !nodes;;
+  render !soln;;
 
 (* remove labels from all nodes *)
 let unlabel_all () =
@@ -329,7 +332,7 @@ let on_mouse_move invalidate event =
    | Invalid -> ());
   true;;
 
-let on_mouse_down _invalidate event =
+let on_mouse_down invalidate event =
   let _button = GdkEvent.Button.button event in
   let x, y = GdkEvent.Button.x event, GdkEvent.Button.y event in
   let clicked = node_underneath (x, y) in
@@ -337,7 +340,7 @@ let on_mouse_down _invalidate event =
    | Some (_, ordered_id) ->
       let x_dim = ordered_id * 2 in
       let y_dim = ordered_id * 2 + 1 in
-      let upd = create_solution_updater (x_dim, y_dim) in
+      let upd = create_solution_updater invalidate (x_dim, y_dim) in
       current_drag := Pending upd
    | None -> current_drag := Invalid);
   true;;
