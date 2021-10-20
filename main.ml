@@ -562,7 +562,7 @@ let add_toolbar_buttons (toolbar : GButton.toolbar)
 
 let () =
   ignore (GMain.init ()) in
-    let w = GWindow.window ~title:"GraphKit" ~width:700 ~height:600 () in
+    let w = GWindow.window ~title:"Constraint Grapher" ~width:700 ~height:600 () in
     ignore(w#connect#destroy ~callback:GMain.quit);
     
     let vb = GPack.vbox ~packing:w#add () in

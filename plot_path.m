@@ -20,7 +20,7 @@ hold on;
 % Draw path
 
 raw = readmatrix('data.csv');
-raw = raw(1:1,:);
+raw = raw(10:20,:);
 
 x = raw(:,1);
 y = raw(:,2);
@@ -42,7 +42,7 @@ plot(points(:,1), points(:,2), 'b*');
 hold on;
 plot(x, y, 'r*');
 hold on
-plot(x, y, 'gO');
+plot(selected_x, selected_y, 'gO');
 
 xlabel('x_0');
 ylabel('x_1');

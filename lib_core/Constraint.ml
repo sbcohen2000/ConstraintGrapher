@@ -52,6 +52,22 @@ let to_string (con : t) =
      "Colinear @ " ^ Int.to_string targ_a ^ ", "
      ^ Int.to_string targ_b
 
+(* returns a tuple of five expressions, the first being an expression
+ * for the distance between the points (x1, y1) and (x2, y2), and the
+ * remaining four being derivatives of this expression w.r.t x1, y1,
+ * x2, and y2 in that order. *)        
+let distance_expr (x1, y1 : Expression.t * Expression.t) (x2, y2 : Expression.t * Expression.t) =
+  let open Expression in
+  let f = Mon (SQRT, Bin (ADD, Mon (SQR, Bin (SUB, x2, x1)),
+                          Mon (SQR, Bin (SUB, y2, y1)))) in
+  let denom = Mon (SQRT, Bin (ADD, Mon (SQR, Bin (SUB, x2, x1)),
+                              Mon (SQR, Bin (SUB, y2, y1)))) in
+  let d_x2 = Bin (DIV, Bin (SUB, x2, x1), denom) in
+  let d_x1 = Bin (MUL, Const (-1.), Bin (DIV, Bin (SUB, x2, x1), denom)) in
+  let d_y2 = Bin (DIV, Bin (SUB, y2, y1), denom) in
+  let d_y1 = Bin (MUL, Const (-1.), Bin (DIV, Bin (SUB, y2, y1), denom)) in
+  (f, d_x1, d_x2, d_y1, d_y2)
+
 let con_to_system (this_node : int) (con : t) =
   let open Expression in
   match con with
@@ -96,26 +112,15 @@ let con_to_system (this_node : int) (con : t) =
      let target_y = X (node_y target_node) in
      let this_x = X (node_x this_node) in
      let this_y = X (node_y this_node) in
+     let f, d_x1, d_x2, d_y1, d_y2 = distance_expr (this_x, this_y) (target_x, target_y) in
      let (eqn : System.eqn) =
        {
-         f = Bin (SUB, Mon (SQRT, Bin (ADD, Mon (SQR, Bin (SUB, target_x, this_x)),
-                                       Mon (SQR, Bin (SUB, target_y, this_y)))),
-                  Const r);
+         f = Bin (SUB, f, Const r);
          ds = [
-             (node_x target_node, Bin (DIV, Bin (SUB, target_x, this_x),
-                                       Mon (SQRT, Bin (ADD, Mon (SQR, Bin (SUB, target_x, this_x)),
-                                                       Mon (SQR, Bin (SUB, target_y, this_y))))));
-             (node_x this_node, Bin (MUL, Const (-1.),
-                                     Bin (DIV, Bin (SUB, target_x, this_x),
-                                          Mon (SQRT, Bin (ADD, Mon (SQR, Bin (SUB, target_x, this_x)),
-                                                          Mon (SQR, Bin (SUB, target_y, this_y)))))));
-             (node_y target_node, Bin (DIV, Bin (SUB, target_y, this_y),
-                                       Mon (SQRT, Bin (ADD, Mon (SQR, Bin (SUB, target_x, this_x)),
-                                                       Mon (SQR, Bin (SUB, target_y, this_y))))));
-             (node_y this_node, Bin (MUL, Const (-1.),
-                                     Bin (DIV, Bin (SUB, target_y, this_y),
-                                          Mon (SQRT, Bin (ADD, Mon (SQR, Bin (SUB, target_x, this_x)),
-                                                          Mon (SQR, Bin (SUB, target_y, this_y)))))));
+             (node_x target_node, d_x2);
+             (node_x this_node,   d_x1);
+             (node_y target_node, d_y2);
+             (node_y this_node,   d_y1)
            ]
        }
      in [ eqn ]
