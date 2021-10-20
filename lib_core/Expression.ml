@@ -13,6 +13,7 @@ type mon_op = EXP
             | SQR
             | SQRT
             | COS
+            | NEG
 
 type t = X of int
        | Bin of bin_op * t * t
@@ -35,7 +36,8 @@ let rec eval (e : t) =
     | EXP -> Float.exp v
     | SQR -> v *. v
     | SQRT -> Float.sqrt v
-    | COS -> Float.cos v in
+    | COS -> Float.cos v
+    | NEG -> Float.neg v in
 
   match e with
   | X sub -> raise (Undefined sub)
@@ -90,6 +92,7 @@ let mon_op_to_string (op : mon_op) =
   | SQR -> "sqr"
   | SQRT -> "sqrt"
   | COS -> "cos"
+  | NEG -> "neg"
 
 let rec to_string (e : t) =
   match e with
