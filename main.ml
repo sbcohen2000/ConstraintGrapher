@@ -1,8 +1,21 @@
-open Geometry.Primitives
+open Geometry.Primitives;;
+
+Gc.set {(Gc.get ()) with Gc.verbose = 0x01};;
+
+type select_mode = Unselected
+                 | Secondary
+                 | Primary;;
 
 type node = { constraints : Core.Constraint.t list;
-              g_obj : Geometry.GraphicsObjects.node;
+              select_state : select_mode;
+              position : Point.t;
               id : int };;
+
+let node_bounds (n : node) =
+  let x, y = n.position
+  and size = 10. in
+  (x -. size /. 2., y -. size /. 2., size, size);;
+
 let (nodes : node list ref) = ref [];;
 let (selection : int list ref) = ref [];;
 
@@ -135,15 +148,15 @@ let on_key_pressed_in_table (tb : GTree.view) (ev : GdkEvent.Key.t) =
 
 (* ==== GEOMETRIC SOLVING =================================================== *)
 
-let render_drawings _d cr =
+let render_drawings cr =
   Cairo.set_source_rgb cr 0. 0. 0.;
   List.iter (fun drawing ->
       match drawing with
       | Line l ->
          let node_a = node_n l.a in
          let node_b = node_n l.b in
-         let ax, ay = node_a.g_obj#get_position in
-         let bx, by = node_b.g_obj#get_position in
+         let ax, ay = node_a.position in
+         let bx, by = node_b.position in
          Cairo.set_line_width cr 3.;
          Cairo.move_to cr ax ay;
          Cairo.line_to cr bx by;
@@ -151,31 +164,67 @@ let render_drawings _d cr =
       | Circle c ->
          let node_c = node_n c.c in
          let node_r = node_n c.r in
-         let ax, ay = node_c.g_obj#get_position in
-         let b = node_r.g_obj#get_position in
+         let ax, ay = node_c.position in
+         let b = node_r.position in
          let r = Geometry.Primitives.Point.distance (ax, ay) b in
          Cairo.set_line_width cr 3.;
          Cairo.arc cr ax ay ~r ~a1:0.0 ~a2:6.283185;
          Cairo.stroke cr;
     ) !drawings;;
 
-let draw d cr =
+let render_node cr (n : node) =
+  let bounds = node_bounds n in
+  let px, py, _w, _h = bounds in
+  Cairo.translate cr px py;
+  let size = 10. in
+  let size_div_2 = size /. 2. in
+    let pat = Cairo.Pattern.create_radial ~x0:(size *. 0.6) ~y0:(size *. 0.3) ~r0:1.
+                ~x1:(size *. 0.6) ~y1:(size *. 0.3) ~r1:8. in
+    (match n.select_state with
+     | Unselected -> begin
+         Cairo.Pattern.add_color_stop_rgb pat 0.2 0.2 0.2;
+         Cairo.Pattern.add_color_stop_rgb pat ~ofs:1. 0.0 0.0 0.0;
+       end
+     | _ -> begin
+         Cairo.Pattern.add_color_stop_rgb pat 1.0 0.2 0.2;
+         Cairo.Pattern.add_color_stop_rgb pat ~ofs:1. 0.7 0.0 0.0;
+       end);
+    Cairo.set_source cr pat;
+    (match n.select_state with
+     | Primary -> begin
+         Cairo.set_line_width cr 3.;
+         Cairo.rectangle cr (1.5) (1.5) ~w:(size -. 3.) ~h:(size -. 3.);
+         Cairo.stroke cr;
+       end
+     | _ -> begin
+         Cairo.arc cr size_div_2 size_div_2 ~r:size_div_2 ~a1:0. ~a2:(3.1415 *. 2.);
+         Cairo.fill cr;
+       end);
+    (match None with
+     | Some s -> begin
+         Cairo.set_source_rgb cr 0.0 0.0 0.0;
+         Cairo.set_font_size cr 10.;
+         let te = Cairo.text_extents cr s in
+         Cairo.move_to cr (0.5 -. te.width -. te.x_bearing)
+           (0.5 -. te.height -. te.y_bearing);
+         Cairo.show_text cr s;
+       end
+     | None -> ());
+    Cairo.translate cr (-.px) (-.py);;
+
+let draw cr (w : float) (h : float) =
   (* white background *)
   Cairo.set_source_rgb cr 1. 1. 1.;
   Cairo.paint cr;
-  let w = float d#misc#allocation.Gtk.width in
-  let h = float d#misc#allocation.Gtk.height in
   let primary = last !selection in
   let grid_offset = match primary with
     | Some id ->
        let node = node_n id in
-       node.g_obj#get_position 
+       node.position
     | None -> Point.zero in
   Geometry.Grid.draw cr w h grid_offset;
-  render_drawings d cr;
-  List.iter (fun node ->
-      node.g_obj#render cr) !nodes;
-  true;;
+  render_drawings cr;
+  List.iter (render_node cr) !nodes;;
 
 let relative_con (con : Core.Constraint.t) =
   match con with
@@ -206,7 +255,7 @@ let system_vector () =
   let size = 2 * (List.length !nodes) in
   let vect = Array.create_float size in
   List.iter (fun node ->
-      let x, y = node.g_obj#get_position in
+      let x, y = node.position in
       let rel_id = relative_id node.id in
       Array.set vect (rel_id * 2) x;
       Array.set vect (rel_id * 2 + 1) y) !nodes;
@@ -222,22 +271,22 @@ let solve () =
   let system = Core.Constraint.to_system cs in
   let init_guess = system_vector () in
   let soln = Solver.solve system init_guess in
-  List.iter (fun node ->
-      let rel_id = relative_id node.id in
-      node.g_obj#set_position (Array.get soln (2 * rel_id),
-                               Array.get soln (2 * rel_id + 1)))
-    !nodes;;
+  nodes := List.map (fun node ->
+               let rel_id = relative_id node.id in
+               let position = (Array.get soln (2 * rel_id),
+                               Array.get soln (2 * rel_id + 1)) in
+               { node with position; }) !nodes;;
 
 let create_solution_updater invalidate (d1, d2 : int * int) =
   let cs = ordered_relative_constraints () in
   let system = Core.Constraint.to_system cs in
   let soln = ref (system_vector ()) in
-  let render = fun solution ->
-    List.iter (fun node ->
-        let rel_id = relative_id node.id in
-        node.g_obj#set_position (Array.get solution (2 * rel_id),
-                                 Array.get solution (2 * rel_id + 1)))
-      !nodes; invalidate () in
+  let render = fun soln ->
+    nodes := List.map (fun node ->
+                 let rel_id = relative_id node.id in
+                 let position = (Array.get soln (2 * rel_id),
+                                 Array.get soln (2 * rel_id + 1)) in
+                 { node with position; }) !nodes; invalidate () in
   fun (tx, ty : float * float) ->
   let rec iter = fun last_soln ->
     (* need to accumulate a few steps for the delta
@@ -256,14 +305,14 @@ let create_solution_updater invalidate (d1, d2 : int * int) =
 
 (* remove labels from all nodes *)
 let unlabel_all () =
-  List.iter (fun node -> node.g_obj#unset_label ()) !nodes;;
+  List.iter (fun _node -> ()) !nodes;;
 
 (* label all of the nodes constrained with node n *)
 let label_constraints (n : node) =
   List.iter (fun con ->
       List.iter (fun id -> 
-         let targ_node = node_n id in
-         targ_node.g_obj#set_label (Int.to_string id))
+         let _targ_node = node_n id in ()
+        (* (targ_node.g_obj#set_label (Int.to_string id) *))
         (Core.Constraint.targets con))
     n.constraints;;
 
@@ -276,32 +325,20 @@ let label_primary_selection () =
      label_constraints primary;
   | None -> ()
 
-let rec update_selection (id : int) (table_view : GTree.view) (shift : bool) =
-  let node = node_n id in
-  if shift then
-    begin
-      if List.exists (fun i -> i = id) !selection
-      then (selection := List.filter (fun i -> not (i = id)) !selection;
-            node.g_obj#set_selection Geometry.GraphicsObjects.None)
-      else (match !selection with
-            | [] ->
-               selection := [id];
-               node.g_obj#set_selection Geometry.GraphicsObjects.Primary;
-            | _ ->
-               selection := id::!selection;
-               node.g_obj#set_selection Geometry.GraphicsObjects.Secondary);
-    end
-  else
-    begin
-      deselect_all table_view;
-      selection := [id];
-      node.g_obj#set_selection Geometry.GraphicsObjects.Primary;
-    end;
+let update_selection (table_view : GTree.view) =
+  let fst = List.nth_opt !selection 0 in
+  nodes := List.map (fun node ->
+               let select_state = match fst with
+                 | Some n -> if node.id = n then Primary
+                             else if List.exists (fun n -> n = node.id) !selection then
+                               Secondary
+                             else
+                               Unselected
+                 | None -> Unselected in
+               { node with select_state; }
+             ) !nodes;
   label_primary_selection ();
-  set_model table_view;
-
-and deselect_all (table_view : GTree.view) =
-  List.iter (fun id -> update_selection id table_view true) !selection;;
+  set_model table_view;;
 
 (* ==== MOUSE CONTROLS ====================================================== *)
 
@@ -312,7 +349,7 @@ let node_underneath (x, y : float * float) =
   let rec find = fun i ns ->
     match ns with
     | [] -> None
-    | n::ns -> if n.g_obj#is_inside (x, y) then Some (n.id, i)
+    | n::ns -> if Rect.is_inside (node_bounds n) (x, y) then Some (n.id, i)
                else find (i + 1) ns in
   find 0 sorted_nodes;;
 
@@ -355,13 +392,16 @@ let on_mouse_up invalidate table_view event =
    | (Some (id, _), Valid (sx, sy, _)) ->
       let d = Point.distance (x, y) (sx, sy) in
       (* if the user dragged for fewer than 2 units, treat it as a click *)
-      if d < 2. then
-        update_selection id table_view shift_on
-      else ()
+      (if shift_on then (if d < 2. then selection := !selection @ [id])
+       else selection := [id];
+       update_selection table_view)
    | (Some (id, _), _) ->
-      update_selection id table_view shift_on
+      (if shift_on then (selection := !selection @ [id])
+       else selection := [id];
+       update_selection table_view)
    | (None, Valid _) -> ()
-   | (None, _) -> deselect_all table_view);
+   | (None, _) -> selection := [];
+                  update_selection table_view);
   current_drag := Invalid;
   invalidate ();
   true;;
@@ -375,11 +415,11 @@ let new_id () =
   !max + 1;;
 
 let on_add_pressed invalidate _entry () =
-  let g_obj = new Geometry.GraphicsObjects.node () in
-  g_obj#set_position (Random.float 250., Random.float 200.);
   let new_node = {
       constraints = [];
-      g_obj; id = new_id (); } in
+      position = Random.float 250., Random.float 200.;
+      select_state = Unselected;
+      id = new_id (); } in
   nodes := new_node::!nodes;
   invalidate ();
   print_endline "added node";;
@@ -442,7 +482,7 @@ let on_vert_con_pressed invalidate _iput () =
 let on_lock_con_pressed _invalidate _iput () =
   nodes := List.map (fun node ->
                let cs' = if List.exists (fun sel -> sel = node.id) !selection
-                         then let x, y = node.g_obj#get_position in
+                         then let x, y = node.position in
                               let con = Core.Constraint.Point (x, y) in
                               con::node.constraints
                          else node.constraints in
@@ -525,7 +565,7 @@ let on_circle_pressed invalidate (_iput : input_group) () =
   | _ -> ();;
 
 let make_toolbar_button (image_name : string) (label : string) =
-  let path = "/home/sam/Documents/ConstraintGrapher/resources/" ^ image_name in
+  let path = "./resources/" ^ image_name in
   let image = GMisc.image ~file:path () in
   let button = GButton.tool_button ~label ~use_underline:true () in
   button#set_icon_widget image#coerce;
@@ -563,6 +603,11 @@ let add_toolbar_buttons (toolbar : GButton.toolbar)
 
 (* ==== MAIN ================================================================ *)
 
+let expose drawing_area cr =
+  let allocation = drawing_area#misc#allocation in
+  draw cr (float allocation.Gtk.width) (float allocation.Gtk.height);
+  true;;
+
 let () =
   ignore (GMain.init ()) in
     let w = GWindow.window ~title:"Constraint Grapher" ~width:700 ~height:600 () in
@@ -590,7 +635,7 @@ let () =
     (* drawing area *)
     let d = GMisc.drawing_area ~packing:(pane#pack1 ~resize:true ~shrink:false)() in
     let invalidate = d#misc#queue_draw in
-    ignore(d#misc#connect#draw ~callback:(draw d));
+    ignore(d#misc#connect#draw ~callback:(expose d));
 
     (* constraint table *)
     let model = generate_model () in
